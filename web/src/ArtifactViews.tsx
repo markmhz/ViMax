@@ -19,6 +19,7 @@ import {
   type StoryboardPreview,
 } from './artifactPresentation';
 import type {Artifact, JsonValue, SessionSummary} from './types';
+import {messages, t} from './i18n';
 
 export function ArtifactsView({session, artifacts}: {session?: SessionSummary; artifacts: Artifact[]}) {
   const jsonArtifacts = useMemo(
@@ -63,10 +64,10 @@ export function ArtifactsView({session, artifacts}: {session?: SessionSummary; a
   return (
     <section className="artifacts-view">
       <header>
-        <div><span>Generated files</span><h1>{session ? projectTitle(session) : 'Artifacts'}</h1></div>
-        <span className="artifact-file-count">{jsonArtifacts.length} documents · {mediaArtifacts.length} visuals</span>
+        <div><span>{messages().artifacts.generatedFiles}</span><h1>{session ? projectTitle(session) : messages().artifacts.title}</h1></div>
+        <span className="artifact-file-count">{t(messages().artifacts.fileCount, {documents: jsonArtifacts.length, visuals: mediaArtifacts.length})}</span>
       </header>
-      <div className="artifact-view-switcher" role="tablist" aria-label="Artifact type">
+      <div className="artifact-view-switcher" role="tablist" aria-label={messages().artifacts.typeAria}>
         {(['all', 'documents', 'visuals'] as const).map((option) => (
           <button
             key={option}
@@ -75,23 +76,23 @@ export function ArtifactsView({session, artifacts}: {session?: SessionSummary; a
             className={view === option ? 'is-selected' : ''}
             onClick={() => setView(option)}
           >
-            {option === 'all' ? 'All' : option === 'documents' ? 'Documents' : 'Visuals'}
+            {option === 'all' ? messages().artifacts.all : option === 'documents' ? messages().artifacts.documents : messages().artifacts.visuals}
           </button>
         ))}
       </div>
       {!session ? (
-        <ArtifactsEmpty title="Select a project" detail="Project files appear here after planning" />
+        <ArtifactsEmpty title={messages().artifacts.selectProject} detail={messages().artifacts.selectProjectDetail} />
       ) : (
         <>
           {(view === 'all' || view === 'documents') && (
             <section className="artifact-content-section">
-              {view === 'all' && <SectionHeading title="Project artifacts" detail="Documents with related visuals" />}
+              {view === 'all' && <SectionHeading title={messages().artifacts.projectArtifacts} detail={messages().artifacts.projectArtifactsDetail} />}
               {jsonArtifacts.length === 0 ? (
-                <ArtifactsEmpty title="No structured files yet" detail="JSON artifacts appear here after planning" />
+                <ArtifactsEmpty title={messages().artifacts.noStructured} detail={messages().artifacts.noStructuredDetail} />
               ) : (
                 <div className="artifact-browser">
-                  <nav className="artifact-document-list" aria-label="Generated JSON files">
-                    <div className="artifact-document-list-title"><span>Documents</span><span>{jsonArtifacts.length}</span></div>
+                  <nav className="artifact-document-list" aria-label={messages().artifacts.jsonListAria}>
+                    <div className="artifact-document-list-title"><span>{messages().artifacts.documents}</span><span>{jsonArtifacts.length}</span></div>
                     {jsonArtifacts.map((artifact) => (
                       <button
                         key={artifact.path}
@@ -106,14 +107,14 @@ export function ArtifactsView({session, artifacts}: {session?: SessionSummary; a
                   <article className={`artifact-document ${view === 'all' ? 'has-related-visuals' : ''}`}>
                     {selected && (
                       <header>
-                        <div><span>Structured view</span><h2>{friendlyArtifactTitle(selected)}</h2></div>
+                        <div><span>{messages().artifacts.structuredView}</span><h2>{friendlyArtifactTitle(selected)}</h2></div>
                         <small>{formatBytes(selected.size)}</small>
                       </header>
                     )}
                     <div className="artifact-document-layout">
                       <div className="artifact-structured-content">
                         {loading ? (
-                          <div className="artifact-document-state">Loading document…</div>
+                          <div className="artifact-document-state">{messages().artifacts.loadingDocument}</div>
                         ) : error ? (
                           <div className="artifact-document-state is-error">{error}</div>
                         ) : document !== undefined && selected ? (
@@ -146,7 +147,7 @@ function VisualArtifacts({artifacts, onPreview}: {artifacts: Artifact[]; onPrevi
         <div className="render-grid">
           {artifacts.map((artifact) => (
             <article key={artifact.path} className="render-item">
-              <button className="render-media" onClick={() => onPreview(artifact)} aria-label={`Preview ${artifact.name}`}>
+              <button className="render-media" onClick={() => onPreview(artifact)} aria-label={t(messages().artifacts.previewNamed, {name: artifact.name})}>
                 {artifact.kind === 'image'
                   ? <img src={mediaUrl(artifact)} alt={artifact.name} />
                   : <video src={mediaUrl(artifact)} muted playsInline preload="metadata" />}
@@ -162,8 +163,8 @@ function VisualArtifacts({artifacts, onPreview}: {artifacts: Artifact[]; onPrevi
       ) : (
         <div className="renders-empty">
           <Film size={24} />
-          <strong>No visual artifacts yet</strong>
-          <span>Images and videos appear here during rendering</span>
+          <strong>{messages().artifacts.noVisuals}</strong>
+          <span>{messages().artifacts.noVisualsDetail}</span>
         </div>
       )}
     </section>
@@ -172,15 +173,15 @@ function VisualArtifacts({artifacts, onPreview}: {artifacts: Artifact[]; onPrevi
 
 function RelatedVisuals({artifacts, onPreview}: {artifacts: Artifact[]; onPreview: (artifact: Artifact) => void}) {
   return (
-    <aside className="artifact-related-visuals" aria-label="Related visuals">
+    <aside className="artifact-related-visuals" aria-label={messages().artifacts.relatedVisuals}>
       <header>
-        <div><span>Related visuals</span><strong>{artifacts.length}</strong></div>
-        <small>{artifacts.length > 0 ? 'Select to preview' : 'Awaiting render'}</small>
+        <div><span>{messages().artifacts.relatedVisuals}</span><strong>{artifacts.length}</strong></div>
+        <small>{artifacts.length > 0 ? messages().artifacts.selectToPreview : messages().artifacts.awaitingRender}</small>
       </header>
       {artifacts.length > 0 ? (
         <div className="related-visual-grid">
           {artifacts.map((artifact) => (
-            <button key={artifact.path} onClick={() => onPreview(artifact)} aria-label={`Preview ${visualArtifactLabel(artifact)}`}>
+            <button key={artifact.path} onClick={() => onPreview(artifact)} aria-label={t(messages().artifacts.previewNamed, {name: visualArtifactLabel(artifact)})}>
               <span>
                 {artifact.kind === 'image'
                   ? <img src={mediaUrl(artifact)} alt={visualArtifactLabel(artifact)} />
@@ -195,7 +196,7 @@ function RelatedVisuals({artifacts, onPreview}: {artifacts: Artifact[]; onPrevie
       ) : (
         <div className="related-visual-empty">
           <ImageIcon size={19} />
-          <span>Matching images and clips will appear alongside this document.</span>
+          <span>{messages().artifacts.relatedEmpty}</span>
         </div>
       )}
     </aside>
@@ -213,10 +214,10 @@ function MediaPreviewDialog({artifact, onClose}: {artifact: Artifact; onClose: (
 
   return (
     <div className="media-preview-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="media-preview-dialog" role="dialog" aria-modal="true" aria-label={`Preview ${visualArtifactLabel(artifact)}`}>
+      <section className="media-preview-dialog" role="dialog" aria-modal="true" aria-label={t(messages().artifacts.previewNamed, {name: visualArtifactLabel(artifact)})}>
         <header>
           <div><strong>{visualArtifactLabel(artifact)}</strong><span>{formatBytes(artifact.size)}</span></div>
-          <button className="icon-button" onClick={onClose} aria-label="Close preview"><X size={18} /></button>
+          <button className="icon-button" onClick={onClose} aria-label={messages().artifacts.closePreview}><X size={18} /></button>
         </header>
         <div className="media-preview-stage">
           {artifact.kind === 'image'
@@ -270,7 +271,7 @@ export function StoryboardPanel({open, artifacts, activeRenderStage, onClose, on
       setPreviews(loaded);
       onCountChange(loaded.length);
       if (loaded.length === 0 && results.some((result) => result.status === 'rejected')) {
-        setError('Storyboard descriptions could not be loaded');
+        setError(messages().storyboard.loadError);
       }
     }).finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
@@ -295,64 +296,64 @@ export function StoryboardPanel({open, artifacts, activeRenderStage, onClose, on
   return (
     <aside className={`storyboard-panel ${open ? 'is-open' : ''}`}>
       <header>
-        <div><strong>Storyboard</strong><span>{previews.length > 0 ? `${index + 1} of ${previews.length}` : 'Preview'}</span></div>
-        <button className="icon-button" onClick={onClose} aria-label="Close storyboard preview"><X size={18} /></button>
+        <div><strong>{messages().storyboard.title}</strong><span>{previews.length > 0 ? t(messages().storyboard.of, {current: index + 1, total: previews.length}) : messages().storyboard.preview}</span></div>
+        <button className="icon-button" onClick={onClose} aria-label={messages().storyboard.close}><X size={18} /></button>
       </header>
-      <section className="render-readiness" aria-label="Render readiness">
+      <section className="render-readiness" aria-label={messages().storyboard.readinessAria}>
         <div className="render-readiness-summary">
-          <strong>{readiness.readyToRender ? 'Ready to render' : 'Planning incomplete'}</strong>
+          <strong>{readiness.readyToRender ? messages().storyboard.readyToRender : messages().storyboard.planningIncomplete}</strong>
         </div>
         <div className="render-checkpoints">
           <ReadinessCheckpoint
-            label="Storyboards"
-            detail={readiness.storyboards.count === 1 ? '1 shot' : `${readiness.storyboards.count} shots`}
+            label={messages().storyboard.storyboards}
+            detail={readiness.storyboards.count === 1 ? messages().storyboard.oneShot : t(messages().storyboard.nShots, {n: readiness.storyboards.count})}
             status={readiness.storyboards.status}
           />
           <ReadinessCheckpoint
-            label="Shot descriptions"
+            label={messages().storyboard.shotDescriptions}
             detail={`${readiness.shotDescriptions.count}/${readiness.shotDescriptions.expected || 0}`}
             status={readiness.shotDescriptions.status}
           />
           <ReadinessCheckpoint
-            label="Camera plans"
+            label={messages().storyboard.cameraPlans}
             detail={`${readiness.cameraPlans.count}/${readiness.cameraPlans.expected || 0}`}
             status={readiness.cameraPlans.status}
           />
         </div>
         <div className="render-stage-heading">
-          <span>Render</span>
-          <small>{activeRenderStage ? 'Generating' : readiness.render.finalVideo.status === 'ready' ? 'Complete' : readiness.render.started ? 'Partial' : 'Not started'}</small>
+          <span>{messages().storyboard.render}</span>
+          <small>{activeRenderStage ? messages().storyboard.generating : readiness.render.finalVideo.status === 'ready' ? messages().storyboard.complete : readiness.render.started ? messages().storyboard.partial : messages().storyboard.notStarted}</small>
         </div>
         <div className="render-checkpoints">
           <ReadinessCheckpoint
-            label="Keyframes"
+            label={messages().storyboard.keyframes}
             detail={`${readiness.render.frames.count}/${readiness.render.frames.expected || 0}`}
             status={readiness.render.frames.status}
             generating={activeCheckpoint === 'frames'}
           />
           <ReadinessCheckpoint
-            label="Video clips"
+            label={messages().storyboard.videoClips}
             detail={`${readiness.render.clips.count}/${readiness.render.clips.expected || 0}`}
             status={readiness.render.clips.status}
             generating={activeCheckpoint === 'clips'}
           />
           <ReadinessCheckpoint
-            label="Final video"
-            detail={readiness.render.finalVideo.status === 'ready' ? 'Ready' : 'Pending'}
+            label={messages().storyboard.finalVideo}
+            detail={readiness.render.finalVideo.status === 'ready' ? messages().storyboard.ready : messages().storyboard.pending}
             status={readiness.render.finalVideo.status}
             generating={activeCheckpoint === 'finalVideo'}
           />
         </div>
       </section>
       <div className="storyboard-description" aria-live="polite">
-        {loading ? <span>Loading storyboard…</span> : error ? <span className="is-error">{error}</span> : current ? <p>{current.description}</p> : <span>No storyboard descriptions yet</span>}
+        {loading ? <span>{messages().storyboard.loading}</span> : error ? <span className="is-error">{error}</span> : current ? <p>{current.description}</p> : <span>{messages().storyboard.empty}</span>}
       </div>
       <footer>
-        <button onClick={() => setIndex((currentIndex) => Math.max(0, currentIndex - 1))} disabled={index === 0 || previews.length === 0} aria-label="Previous storyboard">
-          <ChevronUp size={17} /><span>Previous</span>
+        <button onClick={() => setIndex((currentIndex) => Math.max(0, currentIndex - 1))} disabled={index === 0 || previews.length === 0} aria-label={messages().storyboard.previousAria}>
+          <ChevronUp size={17} /><span>{messages().storyboard.previous}</span>
         </button>
-        <button onClick={() => setIndex((currentIndex) => Math.min(previews.length - 1, currentIndex + 1))} disabled={index >= previews.length - 1 || previews.length === 0} aria-label="Next storyboard">
-          <ChevronDown size={17} /><span>Next</span>
+        <button onClick={() => setIndex((currentIndex) => Math.min(previews.length - 1, currentIndex + 1))} disabled={index >= previews.length - 1 || previews.length === 0} aria-label={messages().storyboard.nextAria}>
+          <ChevronDown size={17} /><span>{messages().storyboard.next}</span>
         </button>
       </footer>
     </aside>
@@ -370,13 +371,14 @@ function ReadinessCheckpoint({label, detail, status, generating = false}: {label
 }
 
 function StatusLight({status, generating = false}: {status: ReadinessStatus; generating?: boolean}) {
-  return <i className={`status-light is-${status} ${generating ? 'is-generating' : ''}`} aria-label={generating ? `${status}, generating` : status} />;
+  const statusLabel = messages().status[status];
+  return <i className={`status-light is-${status} ${generating ? 'is-generating' : ''}`} aria-label={generating ? t(messages().storyboard.statusGenerating, {status: statusLabel}) : statusLabel} />;
 }
 
 function StructuredDocument({value, artifact}: {value: JsonValue; artifact: Artifact}) {
   if (Array.isArray(value)) {
-    if (value.length === 0) return <div className="structured-empty">This document is empty</div>;
-    if (value.every(isJsonPrimitive)) return <StructuredField label="Contents" value={formatStructuredValue(value)} />;
+    if (value.length === 0) return <div className="structured-empty">{messages().artifacts.emptyDocument}</div>;
+    if (value.every(isJsonPrimitive)) return <StructuredField label={messages().artifacts.contents} value={formatStructuredValue(value)} />;
     return (
       <div className="structured-records">
         {value.map((record, index) => (
@@ -385,8 +387,8 @@ function StructuredDocument({value, artifact}: {value: JsonValue; artifact: Arti
       </div>
     );
   }
-  if (isJsonObject(value)) return <StructuredRecord title="Overview" value={value} depth={0} />;
-  return <StructuredField label="Contents" value={formatStructuredValue(value)} />;
+  if (isJsonObject(value)) return <StructuredRecord title={messages().artifacts.overview} value={value} depth={0} />;
+  return <StructuredField label={messages().artifacts.contents} value={formatStructuredValue(value)} />;
 }
 
 function StructuredRecord({title, value, depth}: {title: string; value: JsonValue; depth: number}) {
@@ -412,9 +414,9 @@ function StructuredRecord({title, value, depth}: {title: string; value: JsonValu
 }
 
 function StructuredNested({label, value, depth}: {label: string; value: JsonValue; depth: number}) {
-  if (depth > 5) return <StructuredField label={label} value="Additional structured details" />;
+  if (depth > 5) return <StructuredField label={label} value={messages().artifacts.additionalDetails} />;
   if (Array.isArray(value)) {
-    if (value.length === 0) return <StructuredField label={label} value="None" />;
+    if (value.length === 0) return <StructuredField label={label} value={messages().artifacts.none} />;
     return (
       <section className="structured-nested">
         <h4>{label}</h4>
@@ -449,7 +451,7 @@ function isPrimitiveArray(value: JsonValue): value is Array<string | number | bo
 }
 
 function projectTitle(session: SessionSummary): string {
-  return session.projectName || session.idea || session.summary || 'Untitled video';
+  return session.projectName || session.idea || session.summary || messages().session.untitledVideo;
 }
 
 function formatBytes(bytes: number) {
@@ -473,7 +475,7 @@ function visualArtifactLabel(artifact: Artifact): string {
     .replace(/\b\w/g, (character) => character.toUpperCase());
   if (portrait) return `${portrait[1]} · ${base}`;
   const context = [];
-  if (scene !== undefined) context.push(`Scene ${Number(scene) + 1}`);
-  if (shot !== undefined) context.push(`Shot ${Number(shot) + 1}`);
+  if (scene !== undefined) context.push(t(messages().artifacts.scene, {n: Number(scene) + 1}));
+  if (shot !== undefined) context.push(t(messages().artifacts.shot, {n: Number(shot) + 1}));
   return context.length > 0 ? `${context.join(' · ')} · ${base}` : base;
 }

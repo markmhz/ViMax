@@ -1,3 +1,4 @@
+import {messages, t} from './i18n';
 import type {Artifact, JsonValue} from './types';
 
 export type StoryboardPreview = {
@@ -22,36 +23,6 @@ export type StoryboardReadiness = {
 };
 
 export type RenderCheckpoint = 'frames' | 'clips' | 'finalVideo';
-
-const FIELD_LABELS: Record<string, string> = {
-  idx: 'Number',
-  is_last: 'Final shot',
-  cam_idx: 'Camera',
-  visual_desc: 'Visual description',
-  visual_description: 'Visual description',
-  audio_desc: 'Audio',
-  description: 'Description',
-  ff_desc: 'First frame',
-  lf_desc: 'Last frame',
-  motion_desc: 'Motion',
-  variation_type: 'Transition type',
-  variation_reason: 'Transition notes',
-  ff_vis_char_idxs: 'Characters in first frame',
-  lf_vis_char_idxs: 'Characters in last frame',
-  character_idx: 'Character',
-  character_id: 'Character',
-  shot_idx: 'Shot',
-  scene_idx: 'Scene',
-  camera_idx: 'Camera',
-};
-
-const FILE_TITLES: Record<string, string> = {
-  'camera_tree.json': 'Camera plan',
-  'characters.json': 'Characters',
-  'script.json': 'Script',
-  'shot_description.json': 'Shot description',
-  'storyboard.json': 'Storyboard',
-};
 
 export function isJsonArtifact(artifact: Artifact): boolean {
   const name = artifact.name.toLowerCase();
@@ -88,7 +59,8 @@ export function relatedVisualArtifacts(documentArtifact: Artifact, artifacts: Ar
 }
 
 export function friendlyFieldLabel(key: string): string {
-  if (FIELD_LABELS[key]) return FIELD_LABELS[key];
+  const labels = messages().fields as Record<string, string>;
+  if (labels[key]) return labels[key];
   return key
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (character) => character.toUpperCase());
@@ -100,13 +72,15 @@ export function isArtifactPathField(key: string): boolean {
 }
 
 export function friendlyArtifactTitle(artifact: Artifact): string {
-  const baseTitle = FILE_TITLES[artifact.name.toLowerCase()]
+  const titles = messages().fileTitles as Record<string, string>;
+  const copy = messages().artifacts;
+  const baseTitle = titles[artifact.name.toLowerCase()]
     || artifact.name.replace(/\.json$/i, '').replace(/[_-]+/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
   const sceneMatch = artifact.path.match(/(?:^|\/)scene_(\d+)(?:\/|$)/i);
   const shotMatch = artifact.path.match(/(?:^|\/)shots\/(\d+)(?:\/|$)/i);
   const context = [];
-  if (sceneMatch) context.push(`Scene ${Number(sceneMatch[1]) + 1}`);
-  if (shotMatch) context.push(`Shot ${Number(shotMatch[1]) + 1}`);
+  if (sceneMatch) context.push(t(copy.scene, {n: Number(sceneMatch[1]) + 1}));
+  if (shotMatch) context.push(t(copy.shot, {n: Number(shotMatch[1]) + 1}));
   return context.length ? `${context.join(' · ')} · ${baseTitle}` : baseTitle;
 }
 
@@ -117,18 +91,21 @@ export function structuredRecordTitle(value: JsonValue, index: number, artifact:
       if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
     }
     const explicitIndex = value.idx;
-    if (typeof explicitIndex === 'number') return `${recordNoun(artifact)} ${explicitIndex + 1}`;
+    if (typeof explicitIndex === 'number') {
+      return t(messages().records.numbered, {noun: recordNoun(artifact), n: explicitIndex + 1});
+    }
   }
-  return `${recordNoun(artifact)} ${index + 1}`;
+  return t(messages().records.numbered, {noun: recordNoun(artifact), n: index + 1});
 }
 
 export function formatStructuredValue(value: JsonValue, key = ''): string {
-  if (value === null) return 'Not specified';
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  const copy = messages().values;
+  if (value === null) return copy.notSpecified;
+  if (typeof value === 'boolean') return value ? copy.yes : copy.no;
   if (typeof value === 'number') return isIndexKey(key) ? String(value + 1) : String(value);
-  if (typeof value === 'string') return value.trim() || 'Not specified';
+  if (typeof value === 'string') return value.trim() || copy.notSpecified;
   if (Array.isArray(value) && value.every(isJsonPrimitive)) {
-    if (value.length === 0) return 'None';
+    if (value.length === 0) return copy.none;
     return value.map((item) => typeof item === 'number' && isIndexListKey(key) ? item + 1 : formatStructuredValue(item)).join(', ');
   }
   return '';
@@ -208,10 +185,11 @@ export function isJsonPrimitive(value: JsonValue): value is string | number | bo
 
 function recordNoun(artifact: Artifact): string {
   const name = artifact.name.toLowerCase();
-  if (name === 'storyboard.json' || name === 'shot_description.json') return 'Shot';
-  if (name === 'characters.json') return 'Character';
-  if (name === 'script.json') return 'Scene';
-  return 'Item';
+  const copy = messages().records;
+  if (name === 'storyboard.json' || name === 'shot_description.json') return copy.shot;
+  if (name === 'characters.json') return copy.character;
+  if (name === 'script.json') return copy.scene;
+  return copy.item;
 }
 
 function isIndexKey(key: string): boolean {

@@ -32,3 +32,5 @@ cd ..
 ```
 
 Agent credentials continue to come from ViMax environment variables or `configs/agent.local.yaml`.
+
+The Web UI defaults to Simplified Chinese. Locale maps live in `src/i18n/` (UI) and `i18n.mjs` (API errors). Set `DEFAULT_LOCALE` / `LOCALE` to `'en'` to restore English.
