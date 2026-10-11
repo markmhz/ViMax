@@ -46,6 +46,26 @@ describe('agent config store', () => {
     await expect(saveAgentConfig(root, {sections: {llm: {base_url: 'file:///tmp/key'}}})).rejects.toThrow(/http/);
   });
 
+  it('allows empty or placeholder optional base_url fields (SenseNova empty video)', async () => {
+    const root = await fixture();
+    await saveAgentConfig(root, {
+      sections: {
+        video: {provider: '', model: '', base_url: ''},
+        embedding: {model_provider: 'openai', model: '', base_url: '<YOUR_EMBEDDING_BASE_URL>'},
+        reranker: {model: '', base_url: '<YOUR_RERANKER_BASE_URL>'},
+      },
+    });
+    await saveAgentConfig(root, {
+      sections: {
+        video: {model: '<YOUR_VIDEO_MODEL>', base_url: '<YOUR_VIDEO_BASE_URL>'},
+      },
+    });
+    const config = await readAgentConfig(root);
+    expect(config.sections.video.base_url).toBe('<YOUR_VIDEO_BASE_URL>');
+    expect(config.sections.embedding.base_url).toBe('<YOUR_EMBEDDING_BASE_URL>');
+    expect(config.sections.reranker.base_url).toBe('<YOUR_RERANKER_BASE_URL>');
+  });
+
   it('reads and saves video.provider for Settings ↔ agent.local.yaml', async () => {
     const root = await fixture();
     await saveAgentConfig(root, {sections: {video: {provider: 'google', model: 'veo-3', base_url: 'https://generativelanguage.googleapis.com'}}});
