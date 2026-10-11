@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import time
 from contextlib import contextmanager
 from datetime import datetime
 from functools import wraps
@@ -15,8 +16,34 @@ try:
 except ImportError:  # pragma: no cover - non-POSIX platforms
     fcntl = None
 
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - non-Windows platforms
+    msvcrt = None
+
 
 STALE_KEYS = ["story", "characters", "script", "storyboard", "shot_descriptions", "camera_tree", "frames", "clips", "final_video"]
+
+# Windows can raise WinError 32 while another reader/writer still has the file open.
+_REPLACE_ATTEMPTS = 12
+_REPLACE_BACKOFF_SECONDS = 0.02
+
+
+def _replace_with_retry(src: Path, dst: Path) -> None:
+    last_error: OSError | None = None
+    for attempt in range(_REPLACE_ATTEMPTS):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError as exc:
+            last_error = exc
+        except OSError as exc:
+            if getattr(exc, "winerror", None) not in {32, 5} and exc.errno not in {13, 16}:
+                raise
+            last_error = exc
+        time.sleep(_REPLACE_BACKOFF_SECONDS * (attempt + 1))
+    assert last_error is not None
+    raise last_error
 
 
 def _synchronized(method):
@@ -53,16 +80,34 @@ class SessionIndex:
 
     @contextmanager
     def _locked(self):
-        if fcntl is None:
-            yield
-            return
         lock_path = self.vimax_dir / "sessions.lock"
-        with open(lock_path, "a+", encoding="utf-8") as handle:
-            fcntl.flock(handle, fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(handle, fcntl.LOCK_UN)
+        if fcntl is not None:
+            with open(lock_path, "a+", encoding="utf-8") as handle:
+                fcntl.flock(handle, fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(handle, fcntl.LOCK_UN)
+            return
+        if msvcrt is not None:
+            with open(lock_path, "a+b") as handle:
+                if handle.tell() == 0:
+                    handle.write(b"\0")
+                    handle.flush()
+                handle.seek(0)
+                while True:
+                    try:
+                        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                        break
+                    except OSError:
+                        time.sleep(_REPLACE_BACKOFF_SECONDS)
+                try:
+                    yield
+                finally:
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            return
+        yield
 
     def load(self) -> dict[str, Any]:
         try:
@@ -75,7 +120,7 @@ class SessionIndex:
             # the file and destroy every session — keep the evidence first.
             backup = self.sessions_path.with_name(f"sessions.json.corrupt-{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}")
             try:
-                os.replace(self.sessions_path, backup)
+                _replace_with_retry(self.sessions_path, backup)
                 logging.error("sessions.json was corrupt; preserved it at %s and starting with empty state", backup)
             except OSError:
                 logging.error("sessions.json is corrupt and could not be backed up; starting with empty state")
@@ -84,7 +129,7 @@ class SessionIndex:
     def save(self, data: dict[str, Any]) -> None:
         tmp_path = self.sessions_path.with_name("sessions.json.tmp")
         tmp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(tmp_path, self.sessions_path)
+        _replace_with_retry(tmp_path, self.sessions_path)
 
     def active(self) -> dict[str, Any] | None:
         data = self.load()

@@ -277,17 +277,20 @@ class ImageSelectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
             concatenate.assert_called_once()
 
     async def test_adapter_reads_workspace_count_and_rejects_invalid_count(self):
+        from agent_runtime.config import load_agent_config
+
         for workflow in ("idea2video", "script2video"):
             for count in (3, 0):
                 with self.subTest(workflow=workflow, count=count), tempfile.TemporaryDirectory() as tmp, \
                      patch.dict(os.environ, {}, clear=True):
-                    workspace = Path(tmp)
+                    load_agent_config.cache_clear()
+                    workspace = Path(tmp).resolve()
                     config = workspace / "configs" / "agent.local.yaml"
                     config.parent.mkdir()
                     config.write_text(f"image_selection:\n  num_candidates: {count}\n", encoding="utf-8")
-                    index = SessionIndex(tmp)
+                    index = SessionIndex(workspace)
                     session = index.create(idea="short scene")
-                    root = workspace / session["working_dir"] / workflow
+                    root = index.working_dir(session["session_id"]) / workflow
                     scene = root / "scene_0" if workflow == "idea2video" else root
                     (scene / "shots" / "0").mkdir(parents=True)
                     (root / "characters.json").write_text("[]", encoding="utf-8")
@@ -316,14 +319,15 @@ class ImageSelectionIntegrationTests(unittest.IsolatedAsyncioTestCase):
                          patch(f"agent_runtime.vimax_adapters.{factory_name}", return_value=AsyncMock(side_effect=render)) as factory:
                         result = await adapter.vimax_render_video({}, runtime)
                     if count == 0:
-                        self.assertFalse(result.ok)
+                        self.assertFalse(result.ok, result.content)
                         factory.assert_not_called()
                         self.assertEqual(index.get(session["session_id"])["stage"], "error")
                     else:
-                        self.assertTrue(result.ok)
+                        self.assertTrue(result.ok, result.content)
                         self.assertEqual(factory.call_args.kwargs["num_image_candidates"], 3)
                         stages = [event["progress"]["stage"] for event in events if event.get("type") == "tool_progress"]
                         self.assertIn("image_selection_done", stages)
+                    load_agent_config.cache_clear()
 
 
 class ImageSelectionConfigTests(unittest.TestCase):

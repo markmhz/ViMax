@@ -5,6 +5,7 @@ boundary, session index corruption/atomicity/concurrency, and bounded
 retry policies with backoff across agents and API clients.
 """
 
+import os
 import tempfile
 import threading
 import unittest
@@ -118,6 +119,32 @@ class TestSessionIndexDurability(unittest.TestCase):
             index.create(session_id="roundtrip")
             self.assertEqual(list(index.vimax_dir.glob("*.tmp")), [])
             self.assertIn("roundtrip", index.load()["sessions"])
+
+    def test_replace_retries_windows_sharing_violation(self):
+        from agent_runtime.session_index import _replace_with_retry
+
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "src.json"
+            dst = Path(tmp) / "dst.json"
+            src.write_text("{}", encoding="utf-8")
+            dst.write_text("old", encoding="utf-8")
+            calls = {"n": 0}
+
+            def flaky_replace(a, b):
+                calls["n"] += 1
+                if calls["n"] < 3:
+                    err = OSError("file in use")
+                    err.winerror = 32
+                    raise err
+                # Do not call os.replace/Path.replace here — both are the patched name.
+                Path(b).write_bytes(Path(a).read_bytes())
+                Path(a).unlink()
+
+            with patch("agent_runtime.session_index.os.replace", side_effect=flaky_replace), \
+                 patch("agent_runtime.session_index.time.sleep", return_value=None):
+                _replace_with_retry(src, dst)
+            self.assertEqual(calls["n"], 3)
+            self.assertEqual(dst.read_text(encoding="utf-8"), "{}")
 
     def test_concurrent_creates_do_not_lose_sessions(self):
         with tempfile.TemporaryDirectory() as tmp:

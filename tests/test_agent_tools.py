@@ -21,7 +21,7 @@ class ToolRegistryTests(unittest.IsolatedAsyncioTestCase):
             executor = ToolExecutor(registry, index)
             record = await executor.execute(ToolCall(name="write_json", arguments={"path": "data/a.json", "data": {"x": 1}}), TurnControl())
             self.assertTrue(record.result.ok)
-            self.assertEqual(json.loads((Path(tmp) / "data" / "a.json").read_text())["x"], 1)
+            self.assertEqual(json.loads((Path(tmp) / "data" / "a.json").read_text(encoding="utf-8"))["x"], 1)
             self.assertTrue((Path(tmp) / ".vimax" / "logs" / "tool_calls.jsonl").exists())
 
     async def test_unknown_and_missing_argument_return_tool_errors(self):
@@ -65,14 +65,14 @@ class ToolRegistryTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(written.result.ok)
             todo_path = Path(tmp) / ".vimax" / "todo.json"
             self.assertTrue(todo_path.exists())
-            payload = json.loads(todo_path.read_text())
+            payload = json.loads(todo_path.read_text(encoding="utf-8"))
             self.assertEqual(payload["items"][0]["content"], "实现 TUI")
             self.assertEqual(payload["items"][1]["status"], "pending")
 
             read = await executor.execute(ToolCall(name="todo_read", arguments={}), TurnControl())
             self.assertTrue(read.result.ok)
             self.assertEqual(json.loads(read.result.content)["items"], payload["items"])
-            logs = (Path(tmp) / ".vimax" / "logs" / "tool_calls.jsonl").read_text()
+            logs = (Path(tmp) / ".vimax" / "logs" / "tool_calls.jsonl").read_text(encoding="utf-8")
             self.assertIn('"tool": "todo_write"', logs)
 
     async def test_todo_write_rejects_invalid_payload(self):

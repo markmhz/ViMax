@@ -82,6 +82,34 @@ class AgentPipelineBridgeTests(unittest.TestCase):
             self.assertEqual(merged["chat_model"]["init_args"]["api_key"], "pipeline-key")
             self.assertEqual(merged["chat_model"]["init_args"]["model"], "pipeline-model")
 
+    def test_skips_template_placeholders_and_preserves_provider_presets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_agent_local(root, {
+                "llm": {
+                    "model_provider": "openai",
+                    "model": "<YOUR_LLM_MODEL>",
+                    "base_url": "<YOUR_LLM_BASE_URL>",
+                    "api_key": "shared-key",
+                },
+            })
+            pipeline = {
+                "chat_model": {
+                    "init_args": {
+                        "model": "MiniMax-M3",
+                        "model_provider": "minimax",
+                        "api_key": "",
+                    },
+                },
+            }
+            with patch.dict(os.environ, {}, clear=True):
+                merged = apply_agent_local_overrides(pipeline, root)
+            init_args = merged["chat_model"]["init_args"]
+            self.assertEqual(init_args["api_key"], "shared-key")
+            self.assertEqual(init_args["model_provider"], "minimax")
+            self.assertEqual(init_args["model"], "MiniMax-M3")
+            self.assertNotIn("base_url", init_args)
+
 
 if __name__ == "__main__":
     unittest.main()
