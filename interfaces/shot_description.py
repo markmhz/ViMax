@@ -27,57 +27,16 @@ class ShotBriefDescription(BaseModel):
     )
 
 
-    # audio
+    # audio — default empty: OpenAI-compatible models often emit null for silent shots.
     audio_desc: str = Field(
-        description="A detailed description of the audio in the shot.",
+        default="",
+        description="A detailed description of the audio in the shot. Use an empty string when the shot is silent.",
         examples=[
             "[Sound Effect] Ambient sound (supermarket background noise, shopping cart wheels rolling)",
             "[Speaker] Alice (Happy): Hello, how are you?",
-            None,
+            "",
         ],
     )
-
-    # sound_effect: Optional[str] = Field(
-    #     default=None,
-    #     description="The sound effects used in the shot.",
-    #     examples=[
-    #         "Ambient sound (supermarket background noise, shopping cart wheels rolling)",
-    #         None,
-    #     ],
-    # )
-    # speaker: Optional[str] = Field(
-    #     default=None,
-    #     description="The speaker in the shot, if applicable. If there is no speaker, this field should be set to None.",
-    #     examples=[
-    #         "Alice",
-    #         None,
-    #     ],
-    # )
-    # is_speaker_lip_visible: Optional[bool] = Field(
-    #     default=None,
-    #     description="Indicates whether the speaker's lips are visible in the shot. If there is no speaker, this field should be set to None.",
-    #     examples=[
-    #         True,
-    #         False,
-    #         None,
-    #     ],
-    # )
-    # line: Optional[str] = Field(
-    #     default=None,
-    #     description="The dialogue or monologue in the shot, if applicable. If there is a speaker, there must be a line. If there is no speaker, this field should be set to None.",
-    #     examples=[
-    #         "Hello, how are you?",
-    #         None,
-    #     ],
-    # )
-    # emotion: Optional[str] = Field(
-    #     default=None,
-    #     description="The emotion of the speaker when delivering the line, if applicable. If there is a speaker, there must be an emotion. If there is no speaker, this field should be set to None.",
-    #     examples=[
-    #         "Happy",
-    #         None,
-    #     ],
-    # )
 
     def __str__(self):
         s = f"Shot {self.idx}:\n"
@@ -154,32 +113,13 @@ class ShotDescription(BaseModel):
         If there is a conversation, please write down the content of the conversation), when you meet some dialogue, you should write into the visual content description with :" " symbols and the character's features (eg. SLING (male, late 20s, Texan accent softened by military precision, confident and energetic.) says: "Gear retracted. Flaps transitioning. Flight path stable. You are clear to climb."). If there is a narration, you should write into the visual content description with :" " symbols and the narration's features (eg. Narration: "Everything is looking good. "). ''',
     )
 
-    # audio
+    # audio — default empty: OpenAI-compatible models often emit null for silent shots.
     audio_desc: str = Field(
-        description="A detailed description of the audio in the shot.",
+        default="",
+        description="A detailed description of the audio in the shot. Use an empty string when the shot is silent.",
         examples=[
             "[Sound Effect] Ambient sound (supermarket background noise, shopping cart wheels rolling)",
             "[Speaker] Alice (Happy): Hello, how are you?",
-            None,
+            "",
         ],
     )
-    # sound_effect: Optional[str] = Field(
-    #     default=None,
-    #     description="The sound effects used in the shot. For example, a door creaking or footsteps approaching.",
-    # )
-    # speaker: Optional[str] = Field(
-    #     default=None,
-    #     description="The speaker in the shot, if applicable. If there is no speaker, this field should be set to None.",
-    # )
-    # is_speaker_lip_visible: Optional[bool] = Field(
-    #     default=None,
-    #     description="Indicates whether the speaker's lips are visible in the shot. If there is no speaker, this field should be set to None.",
-    # )
-    # line: Optional[str] = Field(
-    #     default=None,
-    #     description="The dialogue or monologue in the shot, if applicable. If there is a speaker, there must be a line. If there is no speaker, this field should be set to None.",
-    # )
-    # emotion: Optional[str] = Field(
-    #     default=None,
-    #     description="The emotion of the speaker when delivering the line, if applicable. If there is a speaker, there must be an emotion. If there is no speaker, this field should be set to None.",
-    # )

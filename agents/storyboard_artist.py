@@ -6,6 +6,7 @@ from tenacity import retry, stop_after_attempt
 from langchain.chat_models.base import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
+from utils.robust_json_parser import TrailingCommaTolerantPydanticOutputParser as PydanticOutputParser
 from interfaces import CharacterInScene, ShotDescription, ShotBriefDescription
 
 from utils.retry import after_func
