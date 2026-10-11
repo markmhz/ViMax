@@ -590,11 +590,27 @@ def _llm_request_timeout_seconds() -> float:
 
 
 def _narrative_max_tokens() -> int:
-    raw = os.environ.get("VIMAX_NARRATIVE_MAX_TOKENS", "4096")
+    # Default high enough that thinking models still leave room for JSON content
+    # when the gateway ignores enable_thinking=false.
+    raw = os.environ.get("VIMAX_NARRATIVE_MAX_TOKENS", "8192")
     try:
         return max(256, int(raw))
     except ValueError:
-        return 4096
+        return 8192
+
+
+def _narrative_chat_extra_body() -> dict[str, Any]:
+    """Provider kwargs that disable thinking/reasoning when the gateway supports it.
+
+    DeepSeek-V4.1-Flash on OpenAI-compatible hosts (e.g. Thunisoft) often returns
+    ``message.content=null`` and spends the whole budget on ``reasoning`` unless
+    thinking is turned off. Gateways differ on the exact knob — send the common ones.
+    """
+    return {
+        "chat_template_kwargs": {"enable_thinking": False},
+        "enable_thinking": False,
+        "thinking": {"type": "disabled"},
+    }
 
 
 def _pipeline_progress(runtime: ToolRuntimeContext | None, session_id: str, *, scene_index: int | None = None):
@@ -623,6 +639,7 @@ def _build_chat_model() -> Any:
         timeout=_llm_request_timeout_seconds(),
         max_retries=0,
         max_completion_tokens=_narrative_max_tokens(),
+        extra_body=_narrative_chat_extra_body(),
     )
 
 

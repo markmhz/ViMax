@@ -169,6 +169,10 @@ class ViMaxAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fake.calls[0]["timeout"], 12.0)
         self.assertEqual(fake.calls[0]["max_retries"], 0)
         self.assertEqual(fake.calls[0]["max_completion_tokens"], 1234)
+        extra_body = fake.calls[0].get("extra_body") or {}
+        self.assertEqual(extra_body.get("chat_template_kwargs"), {"enable_thinking": False})
+        self.assertEqual(extra_body.get("enable_thinking"), False)
+        self.assertEqual(extra_body.get("thinking"), {"type": "disabled"})
 
 
     async def test_narrative_planning_uses_text_only_pipeline(self):
