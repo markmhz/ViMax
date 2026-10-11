@@ -766,6 +766,7 @@ function SettingsView() {
           <h1>{messages().settings.title}</h1>
           <p className="settings-note">{messages().settings.novelProvidersNote}</p>
           <p className="settings-note">{messages().settings.pipelineBridgeNote}</p>
+          <p className="settings-note">{messages().settings.senseNovaNote}</p>
           <p className="settings-note">{messages().settings.saveBusyNote}</p>
         </div>
         <div className="settings-save-group">

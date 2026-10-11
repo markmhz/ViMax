@@ -1,0 +1,50 @@
+# SenseNova Token Plan example for ViMax Settings / configs/agent.local.yaml.
+# Copy values into Settings (or merge into agent.local.yaml). Do NOT commit real keys.
+#
+# Docs: https://platform.sensenova.cn/docs
+# Base URL: https://token.sensenova.cn/v1  (international: https://token.sensenova.ai/v1)
+
+llm:
+  model_provider: openai
+  model: sensenova-6.8-flash-lite
+  base_url: https://token.sensenova.cn/v1
+  api_key: ''
+
+image:
+  # OpenAI-compatible POST /v1/images/generations
+  model: sensenova-u1.5-lite
+  base_url: https://token.sensenova.cn/v1
+  api_key: ''
+
+image_selection:
+  num_candidates: 2
+
+# Video — leave unconfigured on Token Plan.
+# token.sensenova.cn does not expose a video-generation API that ViMax's
+# OpenRouter / Yunwu / Google video clients can call. Seko is a separate product
+# UI; SenseAudio video uses a different host/key. Configure Video with another
+# provider when you need shot clips / final film.
+
+video:
+  model: ''
+  base_url: ''
+  api_key: ''
+
+# Embedding / Reranker — leave unconfigured on Token Plan.
+# Token Plan documents chat + images only (no /v1/embeddings, no rerank).
+# SenseCore MaaS lists nova-embedding-stable on a different API surface
+# (api.sensenova.cn), not the Token Plan base URL. Piccolo Embedding is
+# open-source weights (Hugging Face), not a hosted Token Plan model id.
+# For novel2video, point Embedding/Reranker at a separate OpenAI-compatible
+# provider (e.g. OpenAI text-embedding-3-small + SiliconFlow BGE reranker).
+
+embedding:
+  model_provider: openai
+  model: ''
+  base_url: ''
+  api_key: ''
+
+reranker:
+  model: ''
+  base_url: ''
+  api_key: ''

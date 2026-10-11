@@ -115,9 +115,14 @@ class ImageGeneratorOpenRouterAPI:
             f"Generating image with {self.model}",
             {"model": self.model, "reference_count": len(references)},
         )
+        # SenseNova Token Plan (and other OpenAI-compatible hosts) use
+        # /v1/images/generations; OpenRouter's dedicated API is /api/v1/images.
+        if _uses_openai_images_generations_path(self.base_url):
+            payload.setdefault("response_format", "b64_json")
+
         timeout = aiohttp.ClientTimeout(total=_request_timeout_seconds())
         status, response = await _post_json(
-            f"{self.base_url}/images",
+            _images_endpoint(self.base_url),
             headers=self._headers(),
             payload=payload,
             timeout=timeout,
@@ -125,7 +130,7 @@ class ImageGeneratorOpenRouterAPI:
         if status >= 400:
             raise OpenRouterImageAPIError(status, response)
 
-        image, extension = _decode_image_response(response)
+        image, extension = await _decode_image_response(response, timeout=timeout)
         if enforce_landscape:
             ensure_not_portrait(image)
         _emit_progress(
@@ -153,24 +158,69 @@ def _prompt_with_landscape_requirement(prompt: str, aspect_ratio: str | None) ->
     return f"{prompt}\n\nComposition requirement: create a landscape image with an approximate {ratio} aspect ratio; the width must be greater than the height."
 
 
-def _decode_image_response(payload: Any) -> tuple[Image.Image, str]:
+def _uses_openai_images_generations_path(base_url: str) -> bool:
+    """True for OpenAI-compatible hosts that expose /images/generations (not OpenRouter)."""
+    normalized = base_url.strip().lower()
+    if "openrouter.ai" in normalized:
+        return False
+    return "sensenova.cn" in normalized or "sensenova.ai" in normalized
+
+
+def _images_endpoint(base_url: str) -> str:
+    root = base_url.rstrip("/")
+    if _uses_openai_images_generations_path(root):
+        return f"{root}/images/generations"
+    return f"{root}/images"
+
+
+async def _decode_image_response(
+    payload: Any,
+    *,
+    timeout: aiohttp.ClientTimeout | None = None,
+) -> tuple[Image.Image, str]:
     data = payload.get("data") if isinstance(payload, dict) else None
     item = data[0] if isinstance(data, list) and data and isinstance(data[0], dict) else None
-    encoded = item.get("b64_json") if item else None
-    if not isinstance(encoded, str) or not encoded:
-        raise ValueError(f"OpenRouter image response missing data[0].b64_json: {payload}")
-    if encoded.startswith("data:"):
-        encoded = encoded.split(",", 1)[-1]
-    try:
-        raw = base64.b64decode(encoded, validate=True)
-        with Image.open(BytesIO(raw)) as opened:
-            opened.load()
-            image = opened.copy()
-    except Exception as exc:
-        raise ValueError("OpenRouter image response contained invalid image data") from exc
-    media_type = item.get("media_type", "image/png")
-    extension = {"image/jpeg": "jpg", "image/webp": "webp"}.get(media_type, "png")
-    return image, extension
+    if not item:
+        raise ValueError(f"Image response missing data[0]: {payload}")
+
+    encoded = item.get("b64_json")
+    if isinstance(encoded, str) and encoded:
+        if encoded.startswith("data:"):
+            encoded = encoded.split(",", 1)[-1]
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+            with Image.open(BytesIO(raw)) as opened:
+                opened.load()
+                image = opened.copy()
+        except Exception as exc:
+            raise ValueError("Image response contained invalid base64 image data") from exc
+        media_type = item.get("media_type", "image/png")
+        extension = {"image/jpeg": "jpg", "image/webp": "webp"}.get(media_type, "png")
+        return image, extension
+
+    # SenseNova may return a temporary URL when response_format=url.
+    url = item.get("url")
+    if isinstance(url, str) and url.startswith(("http://", "https://")):
+        raw = await _get_bytes(url, timeout=timeout or aiohttp.ClientTimeout(total=60))
+        try:
+            with Image.open(BytesIO(raw)) as opened:
+                opened.load()
+                image = opened.copy()
+        except Exception as exc:
+            raise ValueError("Image response URL contained invalid image data") from exc
+        fmt = (image.format or "PNG").lower()
+        extension = {"jpeg": "jpg", "jpg": "jpg", "webp": "webp"}.get(fmt, "png")
+        return image, extension
+
+    raise ValueError(f"Image response missing data[0].b64_json or data[0].url: {payload}")
+
+
+async def _get_bytes(url: str, *, timeout: aiohttp.ClientTimeout) -> bytes:
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.get(url) as response:
+            if response.status >= 400:
+                raise ValueError(f"Failed to download image URL (HTTP {response.status})")
+            return await response.read()
 
 
 def _emit_progress(progress: Any, stage: str, message: str, metadata: dict[str, Any]) -> None:

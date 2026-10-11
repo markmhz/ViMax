@@ -11,6 +11,7 @@ from agent_runtime.vimax_adapters import _build_image_generator
 from tools.image_generator_openrouter_api import (
     ImageGeneratorOpenRouterAPI,
     OpenRouterImageAPIError,
+    _images_endpoint,
     _is_retryable_image_error,
 )
 
@@ -82,6 +83,44 @@ class OpenRouterImageGeneratorTests(unittest.IsolatedAsyncioTestCase):
             generator = _build_image_generator()
         self.assertIsInstance(generator, ImageGeneratorOpenRouterAPI)
         self.assertEqual(generator.model, "openai/gpt-image-2")
+
+    def test_sensenova_uses_openai_images_generations_path(self):
+        self.assertEqual(
+            _images_endpoint("https://token.sensenova.cn/v1"),
+            "https://token.sensenova.cn/v1/images/generations",
+        )
+        self.assertEqual(
+            _images_endpoint("https://openrouter.ai/api/v1"),
+            "https://openrouter.ai/api/v1/images",
+        )
+
+    async def test_sensenova_generations_request_sets_b64_response_format(self):
+        captured = {}
+
+        async def fake_post(url, *, headers, payload, timeout):
+            captured.update(url=url, payload=payload)
+            return 200, {"data": [{"b64_json": _encoded_png(), "media_type": "image/png"}]}
+
+        generator = ImageGeneratorOpenRouterAPI(
+            api_key="secret",
+            model="sensenova-u1.5-lite",
+            base_url="https://token.sensenova.cn/v1",
+        )
+        with patch("tools.image_generator_openrouter_api._post_json", fake_post):
+            await generator.generate_single_image("一只卡通猫和狗见面")
+
+        self.assertEqual(captured["url"], "https://token.sensenova.cn/v1/images/generations")
+        self.assertEqual(captured["payload"]["model"], "sensenova-u1.5-lite")
+        self.assertEqual(captured["payload"]["response_format"], "b64_json")
+
+    def test_agent_factory_selects_openrouter_client_for_sensenova(self):
+        with patch("agent_runtime.vimax_adapters.image_api_key", return_value="secret"), \
+             patch("agent_runtime.vimax_adapters.image_model", return_value="sensenova-u1.5-lite"), \
+             patch("agent_runtime.vimax_adapters.image_base_url", return_value="https://token.sensenova.cn/v1"):
+            generator = _build_image_generator()
+        self.assertIsInstance(generator, ImageGeneratorOpenRouterAPI)
+        self.assertEqual(generator.model, "sensenova-u1.5-lite")
+        self.assertEqual(generator.base_url, "https://token.sensenova.cn/v1")
 
 
 if __name__ == "__main__":

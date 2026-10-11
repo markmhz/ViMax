@@ -95,6 +95,7 @@ const enSource = {
     },
     novelProvidersNote: 'novel2video also needs Embedding and Reranker below (model, base URL, API key) — no hand-editing YAML.',
     pipelineBridgeNote: 'Keys saved here also fill empty api_key / model / base_url fields in configs/idea2video.yaml and configs/script2video.yaml for CLI pipelines.',
+    senseNovaNote: 'SenseNova Token Plan (https://token.sensenova.cn/v1): LLM sensenova-6.8-flash-lite; Image sensenova-u1.5-lite (OpenAI /images/generations). Video and Embedding/Reranker are not on Token Plan — leave Video empty (use OpenRouter/Yunwu/Google separately); for novel2video use another OpenAI-compatible embedding + reranker. See configs/agent.sensenova.example.yaml.',
     saveBusyNote: 'If the agent is mid-turn when you save, reload is deferred so the current run is not killed.',
     savedDeferred: 'Saved. Agent reload deferred until the current turn finishes.',
     savedRestarted: 'Saved. Agent reloaded with the new configuration.',
