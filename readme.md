@@ -283,7 +283,7 @@ npm install
 npm run dev
 ```
 
-Open [http://127.0.0.1:4173](http://127.0.0.1:4173) in your browser. The Web UI supports named projects, agent conversations, slash commands, artifact and render inspection, storyboard previews, file uploads, and provider settings.
+Open [http://127.0.0.1:4173](http://127.0.0.1:4173) in your browser. The Web UI supports named projects, agent conversations, slash commands, artifact and render inspection, storyboard previews, file uploads, and provider settings. Keys saved in Settings also fill empty credential fields in `configs/idea2video.yaml` / `configs/script2video.yaml` for CLI pipelines. For novel2video, upload a text file and plan via `novel_path` instead of pasting the full novel. Video Settings accepts optional `provider`: `openrouter` | `yunwu` | `google`.
 
 The server binds to `127.0.0.1` by default. When ViMax runs on a remote machine, forward the port from your local computer:
 

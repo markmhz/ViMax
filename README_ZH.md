@@ -246,7 +246,7 @@ npm install
 npm run dev
 ```
 
-在浏览器中打开 [http://127.0.0.1:4173](http://127.0.0.1:4173)。Web UI 支持命名项目、Agent 对话、斜杠命令、产物与渲染查看、分镜预览、文件上传和供应商设置。
+在浏览器中打开 [http://127.0.0.1:4173](http://127.0.0.1:4173)。Web UI 支持命名项目、Agent 对话、斜杠命令、产物与渲染查看、分镜预览、文件上传和供应商设置。设置页写入的 `configs/agent.local.yaml` 也会通过 `utils/agent_pipeline_bridge.py` 填补 `idea2video.yaml` / `script2video.yaml` 中空的密钥字段，供 CLI 流水线复用。小说转视频可上传 `.txt`/`.md` 后用 `novel_path`（如 `uploads/chapter.txt`）规划，无需粘贴全文。视频设置支持可选 `provider`：`openrouter` | `yunwu` | `google`。
 
 服务默认只监听 `127.0.0.1`。如果 ViMax 运行在远程服务器上，请在本地电脑建立 SSH 端口转发：
 

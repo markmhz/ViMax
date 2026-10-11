@@ -12,6 +12,8 @@ export type SessionSummary = {
 
 export type ConfigSection = {
   model_provider?: string;
+  /** Video transport: openrouter | yunwu | google (empty = infer from base_url). */
+  provider?: string;
   model: string;
   base_url: string;
   api_key: string;

@@ -1,5 +1,10 @@
-import {describe, expect, it} from 'vitest';
+import {afterEach, describe, expect, it} from 'vitest';
 import {applyAgentEvent, appendLocalUser, composeAgentPrompt, createChatState, humanize} from './events';
+import {DEFAULT_LOCALE, setLocale} from './i18n';
+
+afterEach(() => {
+  setLocale(DEFAULT_LOCALE);
+});
 
 describe('agent event mapping', () => {
   it('streams assistant text into one message', () => {
@@ -25,7 +30,11 @@ describe('agent event mapping', () => {
     expect(composeAgentPrompt('first line\nsecond line')).toBe('first line second line');
     expect(composeAgentPrompt('Use these references', ['uploads/script.txt', 'uploads/look.png']))
       .toBe('Use these references <workspace_uploads>["uploads/script.txt","uploads/look.png"]</workspace_uploads>');
-    expect(humanize('vimax_narrative_planning')).toBe('ViMax Narrative Planning');
+    expect(humanize('vimax_narrative_planning')).toBe('ViMax 叙事规划');
+    expect(humanize('generate_frames')).toBe('生成画面');
+    setLocale('en');
+    expect(humanize('vimax_novel_planning')).toBe('ViMax Novel Planning');
+    expect(humanize('assemble_final_video')).toBe('Assembling final video');
   });
 
   it('ends running tools when the agent process stops', () => {

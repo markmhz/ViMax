@@ -45,4 +45,18 @@ describe('agent config store', () => {
     const root = await fixture();
     await expect(saveAgentConfig(root, {sections: {llm: {base_url: 'file:///tmp/key'}}})).rejects.toThrow(/http/);
   });
+
+  it('reads and saves video.provider for Settings ↔ agent.local.yaml', async () => {
+    const root = await fixture();
+    await saveAgentConfig(root, {sections: {video: {provider: 'google', model: 'veo-3', base_url: 'https://generativelanguage.googleapis.com'}}});
+    const config = await readAgentConfig(root);
+    expect(config.sections.video).toMatchObject({provider: 'google', model: 'veo-3'});
+    const saved = await readFile(path.join(root, 'configs', 'agent.local.yaml'), 'utf8');
+    expect(saved).toContain('provider: google');
+  });
+
+  it('rejects unsupported video providers', async () => {
+    const root = await fixture();
+    await expect(saveAgentConfig(root, {sections: {video: {provider: 'acme'}}})).rejects.toThrow(/openrouter|yunwu|google/);
+  });
 });

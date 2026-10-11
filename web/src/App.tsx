@@ -747,6 +747,7 @@ function SettingsView() {
           <span>{messages().settings.localConfiguration}</span>
           <h1>{messages().settings.title}</h1>
           <p className="settings-note">{messages().settings.novelProvidersNote}</p>
+          <p className="settings-note">{messages().settings.pipelineBridgeNote}</p>
         </div>
         <div className="settings-save-group">
           {status && <span className={status === messages().settings.saved ? 'is-saved' : 'is-error'}>{status}</span>}
@@ -780,6 +781,22 @@ function ConfigSectionEditor({definition, value, onChange}: {
       <div className="config-fields">
         {value.model_provider !== undefined && (
           <label><span>{messages().settings.modelProvider}</span><input value={value.model_provider} onChange={(event) => onChange('model_provider', event.target.value)} /></label>
+        )}
+        {value.provider !== undefined && (
+          <label>
+            <span>{messages().settings.videoProvider}</span>
+            <input
+              value={value.provider}
+              onChange={(event) => onChange('provider', event.target.value)}
+              placeholder={messages().settings.videoProviderHint}
+              list="vimax-video-providers"
+            />
+            <datalist id="vimax-video-providers">
+              <option value="openrouter" />
+              <option value="yunwu" />
+              <option value="google" />
+            </datalist>
+          </label>
         )}
         <label><span>{messages().settings.model}</span><input value={value.model} onChange={(event) => onChange('model', event.target.value)} /></label>
         <label className="config-field-wide"><span>{messages().settings.baseUrl}</span><input value={value.base_url} onChange={(event) => onChange('base_url', event.target.value)} inputMode="url" /></label>

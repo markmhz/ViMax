@@ -1,6 +1,7 @@
 import os
 import shutil
 import logging
+from pathlib import Path
 from agents import Screenwriter, CharacterExtractor, CharacterPortraitsGenerator
 from pipelines.script2video_pipeline import Script2VideoPipeline, _scoped_progress
 from interfaces import CharacterInScene
@@ -48,6 +49,10 @@ class Idea2VideoPipeline:
         with open(config_path, "r") as f:
             config = yaml.safe_load(f)
 
+        from utils.agent_pipeline_bridge import apply_agent_local_overrides
+
+        workspace_root = Path(config_path).resolve().parent.parent
+        config = apply_agent_local_overrides(config, workspace_root)
         chat_model_args = resolve_chat_model_config(config["chat_model"]["init_args"])
         chat_model = init_chat_model(**chat_model_args)
         backend = RenderBackend.from_config(config)

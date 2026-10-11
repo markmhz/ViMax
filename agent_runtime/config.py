@@ -126,14 +126,23 @@ def api_provider_from_base_url(base_url: str) -> str:
         return "openrouter"
     if "yunwu.ai" in normalized:
         return "yunwu"
+    if (
+        "googleapis.com" in normalized
+        or "generativelanguage.googleapis.com" in normalized
+        or "ai.google.dev" in normalized
+        or normalized in {"google", "gemini"}
+    ):
+        return "google"
     return ""
 
 
 def video_provider(workspace_root: str | Path = ".") -> str:
-    """Infer the video API relay/provider from video.base_url.
+    """Resolve video transport/provider from explicit config or video.base_url.
 
-    This is not a model provider setting. OpenRouter/Yunwu are transport/API
-    gateways here, so users should configure base_url and let the adapter pick
-    the matching implementation.
+    Prefer ``video.provider`` / ``VIMAX_VIDEO_PROVIDER`` when set
+    (``openrouter`` | ``yunwu`` | ``google``). Otherwise infer from base_url.
     """
+    explicit = config_value("video", "provider", ["VIMAX_VIDEO_PROVIDER"], "", workspace_root).strip().lower()
+    if explicit:
+        return explicit
     return api_provider_from_base_url(video_base_url(workspace_root))

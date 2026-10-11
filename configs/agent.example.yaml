@@ -21,8 +21,13 @@ video:
   model: <YOUR_VIDEO_MODEL>
   base_url: <YOUR_VIDEO_BASE_URL>
   api_key: ''
+  # Optional override when base_url is not OpenRouter/Yunwu:
+  # provider: openrouter | yunwu | google
 
-# Optional. Fill these only when using novel2video planning.
+# CLI pipelines (configs/idea2video.yaml, configs/script2video.yaml) reuse empty
+# api_key/model/base_url fields from this file via utils/agent_pipeline_bridge.py.
+
+# Required for novel2video planning (also configure in Web Settings).
 embedding:
   model_provider: openai
   model: <YOUR_EMBEDDING_MODEL>
