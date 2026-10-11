@@ -120,6 +120,14 @@ export default function App() {
         void refreshArtifacts(sessionId);
       }
     }
+    // Planning/render tools update sessions.json mid-turn; refresh after each tool so
+    // sidebar stage and Artifacts/storyboard panels are not stuck until the turn ends.
+    if (event.type === 'tool_result' || event.type === 'done') {
+      void refreshSessions().then((state) => {
+        const sessionId = state.activeSessionId;
+        if (sessionId) void refreshArtifacts(sessionId);
+      });
+    }
     setChat((current) => applyAgentEvent(current, event));
   }, () => undefined), [refreshArtifacts, refreshSessions]);
 

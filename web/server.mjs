@@ -249,10 +249,24 @@ function agentCommand() {
   }
   const configuredPython = process.env.VIMAX_PYTHON_CMD;
   if (configuredPython) return {command: configuredPython, args: []};
-  const bundledUv = process.env.VIMAX_UV_CMD || path.join(process.env.HOME || '', '.local', 'bin', 'uv');
-  if (bundledUv && existsSync(bundledUv)) return {command: bundledUv, args: ['run', 'python']};
-  const venvPython = path.join(repoRoot, '.venv', 'bin', 'python3');
-  if (existsSync(venvPython)) return {command: venvPython, args: []};
+  const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+  const bundledUvCandidates = [
+    process.env.VIMAX_UV_CMD,
+    homeDir ? path.join(homeDir, '.local', 'bin', 'uv') : '',
+    homeDir ? path.join(homeDir, '.cargo', 'bin', 'uv.exe') : '',
+    homeDir ? path.join(homeDir, '.local', 'bin', 'uv.exe') : '',
+  ].filter(Boolean);
+  for (const bundledUv of bundledUvCandidates) {
+    if (existsSync(bundledUv)) return {command: bundledUv, args: ['run', 'python']};
+  }
+  const venvPythonCandidates = [
+    path.join(repoRoot, '.venv', 'Scripts', 'python.exe'),
+    path.join(repoRoot, '.venv', 'bin', 'python3'),
+    path.join(repoRoot, '.venv', 'bin', 'python'),
+  ];
+  for (const venvPython of venvPythonCandidates) {
+    if (existsSync(venvPython)) return {command: venvPython, args: []};
+  }
   return {command: 'uv', args: ['run', 'python']};
 }
 
