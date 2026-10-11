@@ -22,6 +22,9 @@ export type ConfigSection = {
 
 export type AgentConfig = {
   sections: Record<'llm' | 'image' | 'video' | 'embedding' | 'reranker', ConfigSection>;
+  deferred_reload?: boolean;
+  restarted?: boolean;
+  warning?: string;
 };
 
 export type Artifact = {

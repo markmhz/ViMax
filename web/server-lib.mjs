@@ -6,6 +6,21 @@ const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mov']);
 const TEXT_EXTENSIONS = new Set(['.txt', '.md', '.json']);
 
+/** Whether saving Settings should defer killing/restarting a busy agent mid-turn. */
+export function shouldDeferAgentReload({agentTurnBusy} = {}) {
+  return Boolean(agentTurnBusy);
+}
+
+export function markAgentTurnBusy(event, currentBusy = false) {
+  if (!event || typeof event !== 'object') return currentBusy;
+  if (event.type === 'turn' || event.type === 'tool_start') return true;
+  if (event.type === 'done' || event.type === 'error') return false;
+  if (event.type === 'bridge_status' && (event.status === 'stopped' || event.status === 'idle' || event.status === 'error')) {
+    return false;
+  }
+  return currentBusy;
+}
+
 export async function readSessionState(repoRoot) {
   const fallback = {activeSessionId: '', sessions: []};
   try {

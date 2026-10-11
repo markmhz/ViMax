@@ -32,9 +32,13 @@ describe('agent event mapping', () => {
       .toBe('Use these references <workspace_uploads>["uploads/script.txt","uploads/look.png"]</workspace_uploads>');
     expect(humanize('vimax_narrative_planning')).toBe('ViMax 叙事规划');
     expect(humanize('generate_frames')).toBe('生成画面');
+    expect(humanize('compress_novel')).toBe('压缩小说');
+    expect(humanize('concat_start')).toBe('拼接最终视频');
+    expect(humanize('novel_render_completed')).toBe('小说渲染完成');
     setLocale('en');
     expect(humanize('vimax_novel_planning')).toBe('ViMax Novel Planning');
     expect(humanize('assemble_final_video')).toBe('Assembling final video');
+    expect(humanize('extract_events')).toBe('Extracting events');
   });
 
   it('ends running tools when the agent process stops', () => {

@@ -304,6 +304,44 @@ class NovelAdapterTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(result.ok)
             self.assertEqual(result.metadata.get("error_type"), "novel_path_invalid")
 
+    async def test_long_novel_is_truncated_with_bilingual_note(self):
+        from agent_runtime import vimax_adapters as adapters
+
+        with tempfile.TemporaryDirectory() as tmp:
+            index = SessionIndex(tmp)
+            session = index.create(project_name="Long novel")
+            working_dir = index.working_dir(session["session_id"])
+            uploads = working_dir / "uploads"
+            uploads.mkdir(parents=True, exist_ok=True)
+            body = "章" * (adapters.NOVEL_TEXT_MAX_CHARS + 1234)
+            (uploads / "epic.txt").write_text(body, encoding="utf-8")
+            adapter = ViMaxAdapters(Path(tmp), index)
+            with patch("agent_runtime.vimax_adapters._build_novel_pipeline", side_effect=lambda working_dir: FakeNovelPipeline(Path(working_dir))):
+                result = await adapter.vimax_novel_planning({"novel_path": "uploads/epic.txt"})
+            self.assertTrue(result.ok, result.content)
+            payload = json.loads(result.content)
+            self.assertTrue(payload["truncated"])
+            self.assertEqual(payload["novel_chars"], adapters.NOVEL_TEXT_MAX_CHARS)
+            self.assertEqual(payload["novel_chars_total"], len(body))
+            self.assertEqual(payload["full_novel_path"], "novel2video/novel/novel_full.txt")
+            full = working_dir / "novel2video" / "novel" / "novel_full.txt"
+            self.assertTrue(full.exists())
+            self.assertEqual(len(full.read_text(encoding="utf-8")), len(body))
+
+    async def test_hard_max_novel_returns_bilingual_error(self):
+        from agent_runtime import vimax_adapters as adapters
+
+        with tempfile.TemporaryDirectory() as tmp:
+            index = SessionIndex(tmp)
+            index.create(project_name="Too long")
+            adapter = ViMaxAdapters(Path(tmp), index)
+            huge = "x" * (adapters.NOVEL_TEXT_HARD_MAX_CHARS + 1)
+            result = await adapter.vimax_novel_planning({"novel_text": huge})
+            self.assertFalse(result.ok)
+            self.assertEqual(result.metadata.get("error_type"), "novel_too_large")
+            self.assertIn("过长", result.content)
+            self.assertIn("too long", result.content.lower())
+
     async def test_render_video_routes_novel2video_with_mock_pipeline(self):
         with tempfile.TemporaryDirectory() as tmp:
             index = SessionIndex(tmp)

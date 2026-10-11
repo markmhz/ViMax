@@ -13,7 +13,10 @@ import {
   isJsonPrimitive,
   isArtifactPathField,
   isStoryboardArtifact,
+  isWorkflowFinalVideo,
+  primaryFinalVideo,
   relatedVisualArtifacts,
+  sortMediaArtifacts,
   structuredRecordTitle,
   type ReadinessStatus,
   type StoryboardPreview,
@@ -34,11 +37,10 @@ export function ArtifactsView({session, artifacts}: {session?: SessionSummary; a
   const [view, setView] = useState<'all' | 'documents' | 'visuals'>('all');
   const [previewArtifact, setPreviewArtifact] = useState<Artifact>();
   const mediaArtifacts = useMemo(
-    () => artifacts
-      .filter((artifact) => artifact.kind === 'image' || artifact.kind === 'video')
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+    () => sortMediaArtifacts(artifacts.filter((artifact) => artifact.kind === 'image' || artifact.kind === 'video')),
     [artifacts],
   );
+  const finalFilm = useMemo(() => primaryFinalVideo(mediaArtifacts), [mediaArtifacts]);
   const relatedMedia = useMemo(
     () => selected ? relatedVisualArtifacts(selected, mediaArtifacts) : [],
     [selected, mediaArtifacts],
@@ -86,6 +88,9 @@ export function ArtifactsView({session, artifacts}: {session?: SessionSummary; a
         <>
           {(view === 'all' || view === 'documents') && (
             <section className="artifact-content-section">
+              {view === 'all' && finalFilm && (
+                <VisualArtifacts artifacts={[finalFilm]} finalFilm={finalFilm} onPreview={setPreviewArtifact} />
+              )}
               {view === 'all' && <SectionHeading title={messages().artifacts.projectArtifacts} detail={messages().artifacts.projectArtifactsDetail} />}
               {jsonArtifacts.length === 0 ? (
                 <ArtifactsEmpty title={messages().artifacts.noStructured} detail={messages().artifacts.noStructuredDetail} />
@@ -131,7 +136,7 @@ export function ArtifactsView({session, artifacts}: {session?: SessionSummary; a
             </section>
           )}
           {view === 'visuals' && (
-            <VisualArtifacts artifacts={mediaArtifacts} onPreview={setPreviewArtifact} />
+            <VisualArtifacts artifacts={mediaArtifacts} finalFilm={finalFilm} onPreview={setPreviewArtifact} />
           )}
         </>
       )}
@@ -140,12 +145,35 @@ export function ArtifactsView({session, artifacts}: {session?: SessionSummary; a
   );
 }
 
-function VisualArtifacts({artifacts, onPreview}: {artifacts: Artifact[]; onPreview: (artifact: Artifact) => void}) {
+function VisualArtifacts({artifacts, finalFilm, onPreview}: {
+  artifacts: Artifact[];
+  finalFilm?: Artifact;
+  onPreview: (artifact: Artifact) => void;
+}) {
+  const remaining = finalFilm ? artifacts.filter((artifact) => artifact.path !== finalFilm.path) : artifacts;
   return (
     <section className="artifact-visuals">
-      {artifacts.length > 0 ? (
+      {finalFilm && (
+        <div className="artifact-final-film">
+          <header>
+            <span>{messages().artifacts.finalFilmDetail}</span>
+            <strong>{messages().artifacts.finalFilm}</strong>
+          </header>
+          <article className="render-item is-final-film">
+            <button className="render-media" onClick={() => onPreview(finalFilm)} aria-label={t(messages().artifacts.previewNamed, {name: messages().artifacts.finalFilm})}>
+              <video src={mediaUrl(finalFilm)} muted playsInline preload="metadata" />
+              <i><Video size={15} /></i>
+            </button>
+            <span className="render-copy">
+              <strong>{visualArtifactLabel(finalFilm)}</strong>
+              <small>{formatBytes(finalFilm.size)}</small>
+            </span>
+          </article>
+        </div>
+      )}
+      {remaining.length > 0 ? (
         <div className="render-grid">
-          {artifacts.map((artifact) => (
+          {remaining.map((artifact) => (
             <article key={artifact.path} className="render-item">
               <button className="render-media" onClick={() => onPreview(artifact)} aria-label={t(messages().artifacts.previewNamed, {name: artifact.name})}>
                 {artifact.kind === 'image'
@@ -160,13 +188,13 @@ function VisualArtifacts({artifacts, onPreview}: {artifacts: Artifact[]; onPrevi
             </article>
           ))}
         </div>
-      ) : (
+      ) : !finalFilm ? (
         <div className="renders-empty">
           <Film size={24} />
           <strong>{messages().artifacts.noVisuals}</strong>
           <span>{messages().artifacts.noVisualsDetail}</span>
         </div>
-      )}
+      ) : null}
     </section>
   );
 }
@@ -466,6 +494,7 @@ function mediaUrl(artifact: Artifact): string {
 }
 
 function visualArtifactLabel(artifact: Artifact): string {
+  if (isWorkflowFinalVideo(artifact)) return messages().artifacts.finalFilm;
   const scene = artifact.path.match(/(?:^|\/)scene_(\d+)(?:\/|$)/i)?.[1];
   const shot = artifact.path.match(/(?:^|\/)shots\/(\d+)(?:\/|$)/i)?.[1];
   const portrait = artifact.path.match(/(?:^|\/)character_portraits\/([^/]+)\/([^/]+)$/i);

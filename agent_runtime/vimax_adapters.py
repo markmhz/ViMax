@@ -304,14 +304,21 @@ class ViMaxAdapters:
         session_id = session["session_id"]
         working_dir = self.session_index.working_dir(session_id)
         novel_source_path = ""
+        novel_meta: dict[str, Any] = {}
         try:
-            novel_text, novel_source_path = _resolve_novel_text(working_dir, novel_text=novel_text, novel_path=novel_path)
+            novel_text, novel_source_path, novel_meta = _resolve_novel_text(working_dir, novel_text=novel_text, novel_path=novel_path)
         except ValueError as exc:
             return ToolResult("vimax_novel_planning", False, str(exc), {"error_type": "missing_input", "session_id": session_id})
         except FileNotFoundError as exc:
             return ToolResult("vimax_novel_planning", False, str(exc), {"error_type": "novel_path_missing", "session_id": session_id, "novel_path": novel_path})
         except RuntimeError as exc:
-            return ToolResult("vimax_novel_planning", False, str(exc), {"error_type": "novel_path_invalid", "session_id": session_id, "novel_path": novel_path})
+            lowered = str(exc).lower()
+            error_type = (
+                "novel_too_large"
+                if any(token in lowered for token in ("过大", "过长", "too large", "too long", "hard max", "硬上限"))
+                else "novel_path_invalid"
+            )
+            return ToolResult("vimax_novel_planning", False, str(exc), {"error_type": error_type, "session_id": session_id, "novel_path": novel_path})
 
         novel_dir = working_dir / "novel2video"
         novel_dir.mkdir(parents=True, exist_ok=True)
@@ -322,9 +329,9 @@ class ViMaxAdapters:
             self.session_index.update_stage(session_id, "novel_planning", "Generating novel structured text artifacts")
             if runtime:
                 runtime.emit_progress(
-                    "Starting novel planning",
-                    stage="starting",
-                    metadata={"session_id": session_id, "novel_path": novel_source_path, "novel_chars": len(novel_text)},
+                    novel_meta.get("truncate_note") or "Starting novel planning",
+                    stage="novel_truncated" if novel_meta.get("truncated") else "starting",
+                    metadata={"session_id": session_id, "novel_path": novel_source_path, "novel_chars": len(novel_text), **novel_meta},
                 )
                 await asyncio.sleep(0)
             pipeline = _build_novel_pipeline(novel_dir)
@@ -362,6 +369,9 @@ class ViMaxAdapters:
             "ready_for_scene_render": ready,
             "novel_path": novel_source_path,
             "novel_chars": len(novel_text),
+            "novel_chars_total": novel_meta.get("novel_chars_total", len(novel_text)),
+            "truncated": bool(novel_meta.get("truncated")),
+            "full_novel_path": novel_meta.get("full_novel_path", ""),
         }
         return ToolResult("vimax_novel_planning", True, json.dumps(payload, ensure_ascii=False, indent=2), payload)
 
@@ -641,6 +651,8 @@ def _build_video_generator() -> VideoGeneratorVeoYunwuAPI | VideoGeneratorOpenRo
 
 NOVEL_PATH_MAX_BYTES = 2_000_000
 NOVEL_TEXT_MAX_CHARS = 400_000
+# Beyond this, refuse even with truncation — upload is likely not text or is unusable.
+NOVEL_TEXT_HARD_MAX_CHARS = 2_000_000
 
 
 def _workspace_relative(workspace_root: Path, path: str | Path) -> str:
@@ -654,8 +666,12 @@ def _workspace_relative(workspace_root: Path, path: str | Path) -> str:
     return candidate.relative_to(root).as_posix()
 
 
-def _resolve_novel_text(working_dir: Path, *, novel_text: str, novel_path: str) -> tuple[str, str]:
-    """Load novel prose from inline text and/or a session-relative upload path."""
+def _resolve_novel_text(working_dir: Path, *, novel_text: str, novel_path: str) -> tuple[str, str, dict[str, Any]]:
+    """Load novel prose from inline text and/or a session-relative upload path.
+
+    Oversized novels are truncated for planning (head chunk) while the full text
+    is preserved under novel2video/novel/novel_full.txt for later chapter uploads.
+    """
     path_text = ""
     resolved_path = ""
     if novel_path:
@@ -664,24 +680,48 @@ def _resolve_novel_text(working_dir: Path, *, novel_text: str, novel_path: str) 
         size = candidate.stat().st_size
         if size > NOVEL_PATH_MAX_BYTES:
             raise RuntimeError(
-                f"Novel file is too large ({size} bytes). Max is {NOVEL_PATH_MAX_BYTES} bytes. "
-                "Split the file or upload a shorter excerpt."
+                f"小说文件过大（{size} 字节，上限 {NOVEL_PATH_MAX_BYTES}）。"
+                f"请拆分章节后通过 novel_path 上传。"
+                f" Novel file is too large ({size} bytes; max {NOVEL_PATH_MAX_BYTES}). "
+                "Split into chapters and upload via novel_path."
             )
         path_text = candidate.read_text(encoding="utf-8").strip()
         if not path_text:
-            raise RuntimeError(f"Novel file is empty: {resolved_path}")
+            raise RuntimeError(
+                f"小说文件为空：{resolved_path} / Novel file is empty: {resolved_path}"
+            )
     text = novel_text or path_text
     if novel_text and path_text and novel_text != path_text:
         # Prefer the uploaded file when both are provided; inline text is treated as an optional prefix note.
         text = path_text
     if not text:
-        raise ValueError("Provide novel_text or novel_path (e.g. uploads/novel.txt) for novel planning.")
-    if len(text) > NOVEL_TEXT_MAX_CHARS:
-        raise RuntimeError(
-            f"Novel text is too long ({len(text)} characters). Max is {NOVEL_TEXT_MAX_CHARS}. "
-            "Upload a shorter excerpt via novel_path, or trim the source."
+        raise ValueError(
+            "请提供 novel_text 或 novel_path（例如 uploads/novel.txt）。"
+            " Provide novel_text or novel_path (e.g. uploads/novel.txt) for novel planning."
         )
-    return text, resolved_path
+    meta: dict[str, Any] = {"truncated": False, "novel_chars_total": len(text), "full_novel_path": ""}
+    if len(text) > NOVEL_TEXT_HARD_MAX_CHARS:
+        raise RuntimeError(
+            f"小说文本过长（{len(text)} 字，硬上限 {NOVEL_TEXT_HARD_MAX_CHARS}）。"
+            f"请按章节拆分后上传。"
+            f" Novel text is too long ({len(text)} characters; hard max {NOVEL_TEXT_HARD_MAX_CHARS}). "
+            "Split into chapter uploads."
+        )
+    if len(text) > NOVEL_TEXT_MAX_CHARS:
+        novel_store = working_dir / "novel2video" / "novel"
+        novel_store.mkdir(parents=True, exist_ok=True)
+        full_path = novel_store / "novel_full.txt"
+        full_path.write_text(text, encoding="utf-8")
+        text = text[:NOVEL_TEXT_MAX_CHARS]
+        meta["truncated"] = True
+        meta["full_novel_path"] = full_path.relative_to(working_dir).as_posix()
+        meta["truncate_note"] = (
+            f"小说过长（共 {meta['novel_chars_total']} 字），已截取前 {NOVEL_TEXT_MAX_CHARS} 字用于规划；"
+            f"完整原文已保存到 {meta['full_novel_path']}。后续章节请分章上传。"
+            f" Novel truncated from {meta['novel_chars_total']} to {NOVEL_TEXT_MAX_CHARS} chars for planning; "
+            f"full text saved at {meta['full_novel_path']}."
+        )
+    return text, resolved_path, meta
 
 
 def _safe_session_file(working_dir: Path, raw_path: str) -> Path:

@@ -35,6 +35,6 @@ Agent credentials continue to come from ViMax environment variables or `configs/
 
 Web Settings writes `configs/agent.local.yaml`. Empty `api_key` / `model` / `base_url` fields in `configs/idea2video.yaml` and `configs/script2video.yaml` are filled from that file (and `VIMAX_*` env) via `utils/agent_pipeline_bridge.py`, so the same keys work for CLI pipelines.
 
-For novel2video, upload a `.txt`/`.md` into the project workspace and ask the agent to plan from it — prefer `novel_path` (e.g. `uploads/chapter.txt`) over pasting the full text. Video Settings accepts an optional `provider` (`openrouter` | `yunwu` | `google`); leave it blank to infer from Base URL.
+For novel2video, configure **Embedding** and **Reranker** in Settings (no YAML hand-edit). Upload a `.txt`/`.md` and plan via `novel_path` (e.g. `uploads/chapter.txt`). Oversized novels are truncated for planning with the full text saved under `novel2video/novel/novel_full.txt`. Saving Settings while a turn is running defers agent reload until the turn finishes. Video Settings accepts optional `provider` (`openrouter` | `yunwu` | `google`).
 
 The Web UI defaults to Simplified Chinese. Locale maps live in `src/i18n/` (UI) and `i18n.mjs` (API errors). Set `DEFAULT_LOCALE` / `LOCALE` to `'en'` to restore English.
