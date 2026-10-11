@@ -92,6 +92,7 @@ export const zhCN: MessageTree = {
     },
     novelProvidersNote: '使用 novel2video 时，除 LLM / 图像 / 视频外，还需要在下方配置嵌入模型与重排序（模型、Base URL、API 密钥），无需手改 YAML。',
     pipelineBridgeNote: '此处保存的密钥也会填入 configs/idea2video.yaml 与 configs/script2video.yaml 中空的 api_key / model / base_url，供 CLI 流水线使用。',
+    senseNovaNote: '商汤日日新 Token Plan（https://token.sensenova.cn/v1）：LLM 用 sensenova-6.8-flash-lite；图像用 sensenova-u1.5-lite（OpenAI /images/generations）。Token Plan 不提供 ViMax 可用的视频或嵌入接口——视频请留空并改用 OpenRouter/Yunwu/Google；小说转视频请另配 OpenAI 兼容的嵌入与重排序。详见 configs/agent.sensenova.example.yaml。',
     saveBusyNote: '保存时若智能体正在执行任务，将延后重新加载，避免中断当前回合。',
     savedDeferred: '已保存。当前回合结束后再重新加载智能体。',
     savedRestarted: '已保存。智能体已使用新配置重新加载。',

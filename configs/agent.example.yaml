@@ -1,5 +1,10 @@
 # ViMax agent runtime local configuration template.
 # Keep real keys out of commits. Prefer environment variables for shared or CI usage.
+#
+# SenseNova Token Plan (chat + OpenAI images): see configs/agent.sensenova.example.yaml
+# (LLM sensenova-6.8-flash-lite, image sensenova-u1.5-lite, base https://token.sensenova.cn/v1).
+# Token Plan has no ViMax-usable video or embeddings API — leave those sections empty
+# or point them at a different provider.
 
 llm:
   model_provider: openai
