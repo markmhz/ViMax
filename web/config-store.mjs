@@ -70,11 +70,19 @@ function publicConfig(payload) {
   return {sections};
 }
 
+function isUnsetOptionalUrl(value) {
+  // Empty / whitespace, or angle-bracket template placeholders from example YAML
+  // (e.g. <YOUR_VIDEO_BASE_URL>) — do not require an http(s) scheme.
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return true;
+  return normalized.startsWith('<') && normalized.endsWith('>') && normalized.length >= 2;
+}
+
 function validatedValue(value, label, maxLength) {
   if (typeof value !== 'string') throw new Error(msg('mustBeString', {label}));
   const normalized = value.trim();
   if (normalized.length > maxLength) throw new Error(msg('tooLong', {label}));
-  if (label.endsWith('.base_url') && normalized && !/^https?:\/\//i.test(normalized)) {
+  if (label.endsWith('.base_url') && !isUnsetOptionalUrl(normalized) && !/^https?:\/\//i.test(normalized)) {
     throw new Error(msg('mustUseHttp', {label}));
   }
   if (label === 'video.provider') {
