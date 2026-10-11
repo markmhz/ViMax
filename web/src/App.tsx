@@ -688,14 +688,14 @@ function SlashCommandMenu({matches, contextPercent, onSelect}: {matches: SlashCo
   );
 }
 
-function configSections(): Array<{key: keyof AgentConfig['sections']; title: string; description: string}> {
+function configSections(): Array<{key: keyof AgentConfig['sections']; title: string; description: string; novelRequired?: boolean}> {
   const sections = messages().settings.sections;
   return [
     {key: 'llm', title: sections.llm.title, description: sections.llm.description},
     {key: 'image', title: sections.image.title, description: sections.image.description},
     {key: 'video', title: sections.video.title, description: sections.video.description},
-    {key: 'embedding', title: sections.embedding.title, description: sections.embedding.description},
-    {key: 'reranker', title: sections.reranker.title, description: sections.reranker.description},
+    {key: 'embedding', title: sections.embedding.title, description: sections.embedding.description, novelRequired: true},
+    {key: 'reranker', title: sections.reranker.title, description: sections.reranker.description, novelRequired: true},
   ];
 }
 
@@ -704,18 +704,24 @@ function SettingsView() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState('');
+  const [statusKind, setStatusKind] = useState<'saved' | 'warn' | 'error' | ''>('');
 
   useEffect(() => {
     let cancelled = false;
     void getAgentConfig()
       .then((payload) => !cancelled && setConfig(payload))
-      .catch((error) => !cancelled && setStatus(error instanceof Error ? error.message : String(error)))
+      .catch((error) => {
+        if (cancelled) return;
+        setStatus(error instanceof Error ? error.message : String(error));
+        setStatusKind('error');
+      })
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
   }, []);
 
   function update(section: keyof AgentConfig['sections'], field: keyof ConfigSection, value: string) {
     setStatus('');
+    setStatusKind('');
     setConfig((current) => current ? {
       sections: {
         ...current.sections,
@@ -728,11 +734,23 @@ function SettingsView() {
     if (!config || saving) return;
     setSaving(true);
     setStatus('');
+    setStatusKind('');
     try {
-      setConfig(await saveAgentConfig(config));
-      setStatus(messages().settings.saved);
+      const saved = await saveAgentConfig(config);
+      setConfig(saved);
+      if (saved.deferred_reload) {
+        setStatus(saved.warning || messages().settings.savedDeferred);
+        setStatusKind('warn');
+      } else if (saved.restarted) {
+        setStatus(saved.warning || messages().settings.savedRestarted);
+        setStatusKind('saved');
+      } else {
+        setStatus(messages().settings.saved);
+        setStatusKind('saved');
+      }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
+      setStatusKind('error');
     } finally {
       setSaving(false);
     }
@@ -748,9 +766,10 @@ function SettingsView() {
           <h1>{messages().settings.title}</h1>
           <p className="settings-note">{messages().settings.novelProvidersNote}</p>
           <p className="settings-note">{messages().settings.pipelineBridgeNote}</p>
+          <p className="settings-note">{messages().settings.saveBusyNote}</p>
         </div>
         <div className="settings-save-group">
-          {status && <span className={status === messages().settings.saved ? 'is-saved' : 'is-error'}>{status}</span>}
+          {status && <span className={statusKind === 'saved' ? 'is-saved' : statusKind === 'warn' ? 'is-warn' : 'is-error'}>{status}</span>}
           <button className="settings-save" onClick={() => void save()} disabled={saving}>
             <Save size={15} />{saving ? messages().settings.saving : messages().settings.save}
           </button>
@@ -760,6 +779,7 @@ function SettingsView() {
         {configSections().map((definition) => (
           <ConfigSectionEditor
             key={definition.key}
+            sectionKey={definition.key}
             definition={definition}
             value={config.sections[definition.key]}
             onChange={(field, value) => update(definition.key, field, value)}
@@ -770,25 +790,53 @@ function SettingsView() {
   );
 }
 
-function ConfigSectionEditor({definition, value, onChange}: {
-  definition: {title: string; description: string};
+function ConfigSectionEditor({sectionKey, definition, value, onChange}: {
+  sectionKey: keyof AgentConfig['sections'];
+  definition: {title: string; description: string; novelRequired?: boolean};
   value: ConfigSection;
   onChange: (field: keyof ConfigSection, value: string) => void;
 }) {
+  const copy = messages().settings;
+  const modelPlaceholder = sectionKey === 'embedding'
+    ? copy.embeddingModelHint
+    : sectionKey === 'reranker'
+      ? copy.rerankerModelHint
+      : undefined;
+  const baseUrlPlaceholder = sectionKey === 'embedding'
+    ? copy.embeddingBaseUrlHint
+    : sectionKey === 'reranker'
+      ? copy.rerankerBaseUrlHint
+      : undefined;
   return (
-    <section className="config-section">
-      <header><h2>{definition.title}</h2><p>{definition.description}</p></header>
+    <section className={`config-section${definition.novelRequired ? ' is-novel-required' : ''}`}>
+      <header>
+        <h2>{definition.title}{definition.novelRequired && <em>{copy.novelRequiredBadge}</em>}</h2>
+        <p>{definition.description}</p>
+      </header>
       <div className="config-fields">
         {value.model_provider !== undefined && (
-          <label><span>{messages().settings.modelProvider}</span><input value={value.model_provider} onChange={(event) => onChange('model_provider', event.target.value)} /></label>
+          <label>
+            <span>{copy.modelProvider}</span>
+            <input
+              value={value.model_provider}
+              onChange={(event) => onChange('model_provider', event.target.value)}
+              placeholder={sectionKey === 'embedding' ? copy.embeddingProviderHint : undefined}
+              list={sectionKey === 'embedding' ? 'vimax-embedding-providers' : undefined}
+            />
+            {sectionKey === 'embedding' && (
+              <datalist id="vimax-embedding-providers">
+                <option value="openai" />
+              </datalist>
+            )}
+          </label>
         )}
         {value.provider !== undefined && (
           <label>
-            <span>{messages().settings.videoProvider}</span>
+            <span>{copy.videoProvider}</span>
             <input
               value={value.provider}
               onChange={(event) => onChange('provider', event.target.value)}
-              placeholder={messages().settings.videoProviderHint}
+              placeholder={copy.videoProviderHint}
               list="vimax-video-providers"
             />
             <datalist id="vimax-video-providers">
@@ -798,11 +846,11 @@ function ConfigSectionEditor({definition, value, onChange}: {
             </datalist>
           </label>
         )}
-        <label><span>{messages().settings.model}</span><input value={value.model} onChange={(event) => onChange('model', event.target.value)} /></label>
-        <label className="config-field-wide"><span>{messages().settings.baseUrl}</span><input value={value.base_url} onChange={(event) => onChange('base_url', event.target.value)} inputMode="url" /></label>
+        <label><span>{copy.model}</span><input value={value.model} onChange={(event) => onChange('model', event.target.value)} placeholder={modelPlaceholder} /></label>
+        <label className="config-field-wide"><span>{copy.baseUrl}</span><input value={value.base_url} onChange={(event) => onChange('base_url', event.target.value)} inputMode="url" placeholder={baseUrlPlaceholder} /></label>
         <label className="config-field-wide">
-          <span>{messages().settings.apiKey} <i className={value.has_api_key ? 'is-configured' : ''}>{value.has_api_key ? messages().settings.configured : messages().settings.notConfigured}</i></span>
-          <input type="password" value={value.api_key} onChange={(event) => onChange('api_key', event.target.value)} placeholder={value.has_api_key ? messages().settings.keepKeyPlaceholder : messages().settings.enterKeyPlaceholder} autoComplete="off" />
+          <span>{copy.apiKey} <i className={value.has_api_key ? 'is-configured' : ''}>{value.has_api_key ? copy.configured : copy.notConfigured}</i></span>
+          <input type="password" value={value.api_key} onChange={(event) => onChange('api_key', event.target.value)} placeholder={value.has_api_key ? copy.keepKeyPlaceholder : copy.enterKeyPlaceholder} autoComplete="off" />
         </label>
       </div>
     </section>

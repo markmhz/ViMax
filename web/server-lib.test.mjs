@@ -2,7 +2,7 @@ import {mkdtemp, mkdir, readFile, stat, writeFile} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {afterEach, describe, expect, it} from 'vitest';
-import {deleteSession, listSessionArtifacts, readSessionHistory, readSessionState, resolveArtifactPath, storeWorkspaceUpload} from './server-lib.mjs';
+import {deleteSession, listSessionArtifacts, markAgentTurnBusy, readSessionHistory, readSessionState, resolveArtifactPath, shouldDeferAgentReload, storeWorkspaceUpload} from './server-lib.mjs';
 
 const roots = [];
 
@@ -103,5 +103,17 @@ describe('web bridge state', () => {
     await expect(stat(path.join(root, '.working_dir', 'session-1'))).rejects.toThrow();
     expect(await readFile(logPath, 'utf8')).toContain('session-2');
     expect(await readFile(logPath, 'utf8')).not.toContain('session-1');
+  });
+
+  it('defers agent reload only while a turn is busy', () => {
+    expect(shouldDeferAgentReload({agentTurnBusy: true})).toBe(true);
+    expect(shouldDeferAgentReload({agentTurnBusy: false})).toBe(false);
+    let busy = false;
+    busy = markAgentTurnBusy({type: 'turn'}, busy);
+    expect(busy).toBe(true);
+    expect(shouldDeferAgentReload({agentTurnBusy: busy})).toBe(true);
+    busy = markAgentTurnBusy({type: 'done'}, busy);
+    expect(busy).toBe(false);
+    expect(shouldDeferAgentReload({agentTurnBusy: busy})).toBe(false);
   });
 });

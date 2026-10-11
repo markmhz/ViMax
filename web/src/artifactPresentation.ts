@@ -39,12 +39,17 @@ export function relatedVisualArtifacts(documentArtifact: Artifact, artifacts: Ar
   const documentDirectory = parentArtifactPath(documentPath);
   const shotDirectory = documentPath.match(/^(.*\/shots\/\d+)(?:\/|$)/i)?.[1];
   const sceneDirectory = documentPath.match(/^(.*\/scene_\d+)(?:\/|$)/i)?.[1];
+  const novelSceneMatch = documentPath.match(/(?:^|\/)novel2video\/scenes\/event_(\d+)\/scene_(\d+)\.json$/i);
   const workflowRoot = documentPath.split('/')[0] || '';
   const name = documentArtifact.name.toLowerCase();
 
   const related = media.filter((artifact) => {
     const mediaPath = normalizeArtifactPath(artifact.path);
     if (shotDirectory) return parentArtifactPath(mediaPath) === shotDirectory;
+    if (novelSceneMatch) {
+      const sceneFinal = `novel2video/videos/event_${novelSceneMatch[1]}/scene_${novelSceneMatch[2]}/final_video.mp4`;
+      return mediaPath === sceneFinal || mediaPath === 'novel2video/final_video.mp4';
+    }
     if (sceneDirectory) return mediaPath.startsWith(`${sceneDirectory}/`);
     if (name === 'characters.json' || name === 'character_portraits_registry.json') {
       return mediaPath.startsWith(`${workflowRoot}/character_portraits/`);
@@ -52,10 +57,27 @@ export function relatedVisualArtifacts(documentArtifact: Artifact, artifacts: Ar
     if (name === 'script.json') {
       return mediaPath.startsWith(`${workflowRoot}/scene_`) || mediaPath === `${workflowRoot}/final_video.mp4`;
     }
+    if (workflowRoot === 'novel2video') {
+      return mediaPath === 'novel2video/final_video.mp4' || parentArtifactPath(mediaPath) === documentDirectory;
+    }
     return parentArtifactPath(mediaPath) === documentDirectory;
   });
 
-  return related.sort((left, right) => left.path.localeCompare(right.path, undefined, {numeric: true}));
+  return sortMediaArtifacts(related);
+}
+
+/** Prefer workflow-level final_video.mp4 over scene clips when presenting visuals. */
+export function primaryFinalVideo(artifacts: Artifact[]): Artifact | undefined {
+  return artifacts.find(isWorkflowFinalVideo);
+}
+
+export function sortMediaArtifacts(artifacts: Artifact[]): Artifact[] {
+  return [...artifacts].sort((left, right) => {
+    const leftFinal = isWorkflowFinalVideo(left) ? 0 : 1;
+    const rightFinal = isWorkflowFinalVideo(right) ? 0 : 1;
+    if (leftFinal !== rightFinal) return leftFinal - rightFinal;
+    return right.updatedAt.localeCompare(left.updatedAt) || left.path.localeCompare(right.path, undefined, {numeric: true});
+  });
 }
 
 export function friendlyFieldLabel(key: string): string {
@@ -221,7 +243,7 @@ function isNovelWorkflow(artifacts: Artifact[]): boolean {
   });
 }
 
-function isWorkflowFinalVideo(artifact: Artifact): boolean {
+export function isWorkflowFinalVideo(artifact: Artifact): boolean {
   const path = normalizeArtifactPath(artifact.path);
   return /(?:^|\/)(?:idea2video|script2video|novel2video)\/final_video\.mp4$/i.test(path);
 }

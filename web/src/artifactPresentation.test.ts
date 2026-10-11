@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {activeRenderCheckpoint, deriveStoryboardReadiness, extractStoryboardPreviews, formatStructuredValue, friendlyArtifactTitle, friendlyFieldLabel, isArtifactPathField, isJsonArtifact, relatedVisualArtifacts} from './artifactPresentation';
+import {activeRenderCheckpoint, deriveStoryboardReadiness, extractStoryboardPreviews, formatStructuredValue, friendlyArtifactTitle, friendlyFieldLabel, isArtifactPathField, isJsonArtifact, isWorkflowFinalVideo, primaryFinalVideo, relatedVisualArtifacts, sortMediaArtifacts} from './artifactPresentation';
 import type {Artifact} from './types';
 
 const artifact: Artifact = {
@@ -163,6 +163,28 @@ describe('artifact presentation', () => {
       makeMediaArtifact('idea2video/scene_0/shots/0/first_frame.png', 'image'),
     ]);
     expect(visuals.map((item) => item.path)).toEqual(['idea2video/character_portraits/alex/front.png']);
+  });
+
+  it('surfaces novel final_video.mp4 ahead of scene clips', () => {
+    const sceneFinal = makeMediaArtifact('novel2video/videos/event_0/scene_0/final_video.mp4', 'video');
+    const workflowFinal = makeMediaArtifact('novel2video/final_video.mp4', 'video');
+    const sorted = sortMediaArtifacts([sceneFinal, workflowFinal]);
+    expect(sorted[0].path).toBe('novel2video/final_video.mp4');
+    expect(primaryFinalVideo([sceneFinal, workflowFinal])?.path).toBe('novel2video/final_video.mp4');
+    expect(isWorkflowFinalVideo(workflowFinal)).toBe(true);
+    expect(isWorkflowFinalVideo(sceneFinal)).toBe(false);
+  });
+
+  it('pairs novel scene documents with scene final and workflow final film', () => {
+    const visuals = relatedVisualArtifacts(makeArtifact('novel2video/scenes/event_0/scene_0.json'), [
+      makeMediaArtifact('novel2video/videos/event_0/scene_0/final_video.mp4', 'video'),
+      makeMediaArtifact('novel2video/videos/event_1/scene_0/final_video.mp4', 'video'),
+      makeMediaArtifact('novel2video/final_video.mp4', 'video'),
+    ]);
+    expect(visuals.map((item) => item.path)).toEqual([
+      'novel2video/final_video.mp4',
+      'novel2video/videos/event_0/scene_0/final_video.mp4',
+    ]);
   });
 });
 

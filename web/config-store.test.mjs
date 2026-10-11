@@ -59,4 +59,38 @@ describe('agent config store', () => {
     const root = await fixture();
     await expect(saveAgentConfig(root, {sections: {video: {provider: 'acme'}}})).rejects.toThrow(/openrouter|yunwu|google/);
   });
+
+  it('round-trips embedding and reranker fields for novel2video Settings', async () => {
+    const root = await fixture();
+    await saveAgentConfig(root, {
+      sections: {
+        embedding: {
+          model_provider: 'openai',
+          model: 'text-embedding-3-small',
+          base_url: 'https://api.openai.com/v1',
+          api_key: 'embed-secret',
+        },
+        reranker: {
+          model: 'BAAI/bge-reranker-v2-m3',
+          base_url: 'https://api.siliconflow.cn/v1',
+          api_key: 'rerank-secret',
+        },
+      },
+    });
+    const config = await readAgentConfig(root);
+    expect(config.sections.embedding).toMatchObject({
+      model_provider: 'openai',
+      model: 'text-embedding-3-small',
+      base_url: 'https://api.openai.com/v1',
+      has_api_key: true,
+      api_key: '',
+    });
+    expect(config.sections.reranker).toMatchObject({
+      model: 'BAAI/bge-reranker-v2-m3',
+      base_url: 'https://api.siliconflow.cn/v1',
+      has_api_key: true,
+      api_key: '',
+    });
+    expect(config.sections.reranker.model_provider).toBeUndefined();
+  });
 });

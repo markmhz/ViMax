@@ -40,6 +40,8 @@ const en = {
   tooLong: '{label} is too long',
   mustUseHttp: '{label} must use http:// or https://',
   invalidVideoProvider: '{label} must be openrouter, yunwu, google, or empty',
+  configSavedDeferred: 'Settings saved. Agent reload deferred until the current turn finishes.',
+  configSavedRestarted: 'Settings saved. Agent reloaded with the new configuration.',
 };
 
 const zhCN = {
@@ -80,6 +82,8 @@ const zhCN = {
   tooLong: '{label} 过长',
   mustUseHttp: '{label} 必须使用 http:// 或 https://',
   invalidVideoProvider: '{label} 必须是 openrouter、yunwu、google 或留空',
+  configSavedDeferred: '设置已保存。当前回合结束后再重新加载智能体。',
+  configSavedRestarted: '设置已保存。智能体已使用新配置重新加载。',
 };
 
 const catalogs = {en, 'zh-CN': zhCN};

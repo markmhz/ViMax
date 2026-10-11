@@ -1009,6 +1009,50 @@ a:focus-visible {
   color: var(--green);
 }
 
+.settings-save-group > span.is-warn {
+  color: #b7791f;
+}
+
+.config-section.is-novel-required > header h2 em {
+  margin-left: 8px;
+  padding: 2px 6px;
+  color: #9a3412;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 650;
+  background: rgba(234, 179, 8, 0.16);
+  border-radius: 4px;
+}
+
+.artifact-final-film {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel) 88%, var(--blue) 12%);
+}
+
+.artifact-final-film > header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.artifact-final-film > header span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.artifact-final-film > header strong {
+  font-size: 14px;
+}
+
+.artifact-final-film .render-item {
+  max-width: 420px;
+}
+
 .settings-save {
   display: inline-flex;
   height: 34px;

@@ -9,9 +9,11 @@ import {
   artifactContentType,
   deleteSession,
   listSessionArtifacts,
+  markAgentTurnBusy,
   readSessionHistory,
   readSessionState,
   resolveArtifactPath,
+  shouldDeferAgentReload,
   storeWorkspaceUpload,
 } from './server-lib.mjs';
 import {msg} from './i18n.mjs';
@@ -28,6 +30,8 @@ const uploadMaxBytes = Number.isFinite(configuredUploadLimit) && configuredUploa
 const subscribers = new Set();
 let agentProcess = null;
 let activeSessionId = '';
+let agentTurnBusy = false;
+let pendingConfigReload = false;
 
 let vite = null;
 
@@ -45,8 +49,27 @@ const server = createServer(async (request, response) => {
     }
     if (url.pathname === '/api/config' && request.method === 'PUT') {
       const config = await saveAgentConfig(repoRoot, await readJsonBody(request));
+      if (shouldDeferAgentReload({agentTurnBusy})) {
+        pendingConfigReload = true;
+        broadcast({type: 'bridge_status', status: 'config_deferred', message: msg('configSavedDeferred')});
+        return sendJson(response, 200, {
+          ...config,
+          deferred_reload: true,
+          warning: msg('configSavedDeferred'),
+        });
+      }
+      const sessionToRestart = activeSessionId;
       stopAgent('config');
-      return sendJson(response, 200, config);
+      if (sessionToRestart) {
+        await startAgent({sessionId: sessionToRestart});
+        return sendJson(response, 200, {
+          ...config,
+          deferred_reload: false,
+          restarted: true,
+          warning: msg('configSavedRestarted'),
+        });
+      }
+      return sendJson(response, 200, {...config, deferred_reload: false, restarted: false});
     }
     if (url.pathname === '/api/sessions' && request.method === 'DELETE') {
       const sessionId = url.searchParams.get('session') || '';
@@ -199,10 +222,19 @@ function consumeAgentLine(line) {
   if (!line.trim()) return;
   try {
     const event = JSON.parse(line);
+    agentTurnBusy = markAgentTurnBusy(event, agentTurnBusy);
     if (event.type === 'session') activeSessionId = event.session?.active_session_id || activeSessionId;
     broadcast(event);
     if (event.type === 'session') {
       readSessionState(repoRoot).then((state) => broadcast({type: 'sessions_changed', ...state}));
+    }
+    if (pendingConfigReload && (event.type === 'done' || event.type === 'error')) {
+      pendingConfigReload = false;
+      const sessionToRestart = activeSessionId;
+      stopAgent('config');
+      if (sessionToRestart) {
+        void startAgent({sessionId: sessionToRestart});
+      }
     }
   } catch {
     broadcast({type: 'terminal', stream: 'stdout', line});
@@ -234,6 +266,7 @@ function stopAgent(reason) {
   if (!agentProcess) return;
   const child = agentProcess;
   agentProcess = null;
+  agentTurnBusy = false;
   child.kill('SIGTERM');
   const message = reason === 'switch'
     ? msg('switchingWorkspace')
