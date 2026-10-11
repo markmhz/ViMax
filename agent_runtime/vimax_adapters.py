@@ -326,14 +326,14 @@ class ViMaxAdapters:
         ready = _novel_text_ready(checklist)
         self.session_index.update_stage(session_id, "novel_planned" if ready else "novel_planning", "Novel structured text planning complete" if ready else "Novel structured text planning partially complete")
         if runtime:
-            runtime.emit_progress("Novel planning complete", stage="completed", metadata={"session_id": session_id, "ready_for_scene_render": False})
+            runtime.emit_progress("Novel planning complete", stage="completed", metadata={"session_id": session_id, "ready_for_scene_render": ready})
         payload = {
             "session_id": session_id,
             "working_dir": str(working_dir.relative_to(self.workspace_root)),
             "generated": generated,
             "reused": reused,
             "missing": missing,
-            "ready_for_scene_render": False,
+            "ready_for_scene_render": ready,
         }
         return ToolResult("vimax_novel_planning", True, json.dumps(payload, ensure_ascii=False, indent=2), payload)
 

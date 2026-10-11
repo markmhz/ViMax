@@ -253,7 +253,7 @@ class NovelAdapterTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue((root / "novel2video" / "novel" / "novel_compressed.txt").exists())
             self.assertTrue((root / "novel2video" / "events" / "event_0.json").exists())
             self.assertIn("novel2video/scenes/event_*/scene_*.json", payload["generated"])
-            self.assertFalse(payload["ready_for_scene_render"])
+            self.assertTrue(payload["ready_for_scene_render"])
             self.assertEqual(index.active()["stage"], "novel_planned")
             stages = [event["progress"]["stage"] for event in progress_events if event.get("type") == "tool_progress"]
             self.assertIn("novel_plan_text_artifacts", stages)
