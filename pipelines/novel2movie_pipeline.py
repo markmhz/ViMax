@@ -23,6 +23,7 @@ from interfaces import (
 from tenacity import retry
 
 from utils.text import safe_path_component
+from utils.video import concatenate_video_files
 
 
 
@@ -442,6 +443,7 @@ class Novel2MoviePipeline:
         working_dir_scene_videos = os.path.join(self.working_dir, "videos")
         os.makedirs(working_dir_scene_videos, exist_ok=True)
         scene_video_dirs: list[str] = []
+        scene_final_paths: list[str] = []
         for event in extracted_events:
             for scene in event_idx_to_scenes[event.index]:
                 scene_video_dir = os.path.join(working_dir_scene_videos, f"event_{event.index}", f"scene_{scene.idx}")
@@ -456,7 +458,7 @@ class Novel2MoviePipeline:
                         }
                     }
                 _emit_text_plan_progress(progress, "novel_scene_render_start", "Rendering novel scene video", {"event_idx": event.index, "scene_idx": scene.idx})
-                await self.script2video_pipeline(
+                scene_final = await self.script2video_pipeline(
                     script=scene.script,
                     user_requirement="",
                     style=style or "realistic movie style",
@@ -466,14 +468,31 @@ class Novel2MoviePipeline:
                     progress=progress,
                 )
                 scene_video_dirs.append(scene_video_dir)
+                scene_final_path = str(scene_final) if scene_final else os.path.join(scene_video_dir, "final_video.mp4")
+                if not os.path.exists(scene_final_path):
+                    raise RuntimeError(f"Scene video missing after render: {scene_final_path}")
+                scene_final_paths.append(scene_final_path)
                 _emit_text_plan_progress(progress, "novel_scene_render_done", "Rendered novel scene video", {"event_idx": event.index, "scene_idx": scene.idx, "path": scene_video_dir})
 
-        _emit_text_plan_progress(progress, "novel_render_completed", "Novel scene render complete", {"scene_count": len(scene_video_dirs)})
+        final_video_path = os.path.join(self.working_dir, "final_video.mp4")
+        if not scene_final_paths:
+            raise RuntimeError("No scene videos were produced to assemble the final film")
+        if os.path.exists(final_video_path):
+            _pipeline_print(quiet, f"🚀 Skipped concatenating novel scene videos, already exists: {final_video_path}")
+            _emit_text_plan_progress(progress, "final_video_exists", "Final novel video already exists", {"path": final_video_path, "scene_count": len(scene_final_paths)})
+        else:
+            _pipeline_print(quiet, f"🎬 Concatenating {len(scene_final_paths)} novel scene videos...")
+            _emit_text_plan_progress(progress, "concat_start", "Concatenating novel scene videos", {"scene_count": len(scene_final_paths)})
+            concatenate_video_files(scene_final_paths, final_video_path)
+            _emit_text_plan_progress(progress, "concat_done", "Final novel video concatenated", {"path": final_video_path, "scene_count": len(scene_final_paths)})
+
+        _emit_text_plan_progress(progress, "novel_render_completed", "Novel render complete", {"scene_count": len(scene_video_dirs), "final_video_path": final_video_path})
         return {
             "character_portraits_dir": working_dir_character_portrait,
             "scene_videos_dir": working_dir_scene_videos,
             "scene_video_dirs": scene_video_dirs,
             "scene_count": len(scene_video_dirs),
+            "final_video_path": final_video_path,
         }
 
     async def __call__(

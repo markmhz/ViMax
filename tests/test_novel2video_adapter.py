@@ -177,15 +177,20 @@ class FakeNovelRenderPipeline:
         if progress:
             progress("novel_portraits_start", "portraits", {})
             progress("novel_scene_render_start", "scene", {"event_idx": 0, "scene_idx": 0})
+            progress("concat_start", "concat", {"scene_count": 1})
+            progress("concat_done", "concat", {"scene_count": 1})
             progress("novel_render_completed", "done", {"scene_count": 1})
         scene_dir = self.working_dir / "videos" / "event_0" / "scene_0"
         scene_dir.mkdir(parents=True, exist_ok=True)
         (scene_dir / "final_video.mp4").write_text("video", encoding="utf-8")
+        final_video_path = self.working_dir / "final_video.mp4"
+        final_video_path.write_text("assembled", encoding="utf-8")
         return {
             "character_portraits_dir": str(self.working_dir / "character_portraits"),
             "scene_videos_dir": str(self.working_dir / "videos"),
             "scene_video_dirs": [str(scene_dir)],
             "scene_count": 1,
+            "final_video_path": str(final_video_path),
         }
 
 
@@ -279,12 +284,14 @@ class NovelAdapterTests(unittest.IsolatedAsyncioTestCase):
             payload = json.loads(result.content)
             self.assertEqual(payload["render_mode"], "novel2video")
             self.assertTrue(payload["scene_render_completed"])
-            self.assertIsNone(payload["final_video_path"])
+            self.assertEqual(payload["final_video_path"], f"{record['working_dir']}/novel2video/final_video.mp4")
             self.assertEqual(payload["scene_count"], 1)
-            self.assertEqual(index.get(record["session_id"])["stage"], "novel_scene_rendered")
+            self.assertEqual(index.get(record["session_id"])["stage"], "rendered")
             self.assertTrue((root / "novel2video" / "videos" / "event_0" / "scene_0" / "final_video.mp4").exists())
+            self.assertTrue((root / "novel2video" / "final_video.mp4").exists())
             stages = [event["progress"]["stage"] for event in progress_events if event.get("type") == "tool_progress"]
             self.assertIn("novel_scene_render_start", stages)
+            self.assertIn("concat_start", stages)
             self.assertIn("novel_render_completed", stages)
 
 

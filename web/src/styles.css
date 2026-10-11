@@ -980,6 +980,14 @@ a:focus-visible {
   letter-spacing: 0;
 }
 
+.settings-note {
+  margin: 8px 0 0;
+  max-width: 42rem;
+  color: var(--muted, #6b7280);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .settings-save-group {
   display: flex;
   align-items: center;

@@ -138,12 +138,14 @@ export function extractStoryboardPreviews(document: JsonValue, sourcePath: strin
 }
 
 export function deriveStoryboardReadiness(artifacts: Artifact[], storyboardCount: number): StoryboardReadiness {
+  if (isNovelWorkflow(artifacts)) return deriveNovelReadiness(artifacts);
+
   const storyboardFiles = artifacts.filter(isStoryboardArtifact).length;
   const shotDescriptions = artifacts.filter((artifact) => artifact.name.toLowerCase() === 'shot_description.json').length;
   const cameraPlans = artifacts.filter((artifact) => artifact.name.toLowerCase() === 'camera_tree.json').length;
   const frames = artifacts.filter((artifact) => artifact.name.toLowerCase() === 'first_frame.png').length;
   const clips = artifacts.filter((artifact) => artifact.name.toLowerCase() === 'video.mp4').length;
-  const finalVideos = artifacts.filter((artifact) => artifact.name.toLowerCase() === 'final_video.mp4').length;
+  const finalVideos = artifacts.filter(isWorkflowFinalVideo).length;
   const storyboards = checkpointStatus(storyboardCount, Math.max(storyboardFiles, 1));
   const shots = checkpointStatus(shotDescriptions, storyboardCount);
   const cameras = checkpointStatus(cameraPlans, storyboardFiles);
@@ -160,12 +162,68 @@ export function deriveStoryboardReadiness(artifacts: Artifact[], storyboardCount
     shotDescriptions: {status: shots, count: shotDescriptions, expected: storyboardCount},
     cameraPlans: {status: cameras, count: cameraPlans, expected: storyboardFiles},
     render: {
-      started: frames > 0 || clips > 0 || finalVideos > 0,
+      started: frames > 0 || clips > 0 || finalVideos > 0 || artifacts.some((artifact) => artifact.name.toLowerCase() === 'final_video.mp4'),
       frames: {status: renderCheckpointStatus(frames, storyboardCount), count: frames, expected: storyboardCount},
       clips: {status: renderCheckpointStatus(clips, storyboardCount), count: clips, expected: storyboardCount},
       finalVideo: {status: renderCheckpointStatus(finalVideos, 1), count: finalVideos, expected: 1},
     },
   };
+}
+
+function deriveNovelReadiness(artifacts: Artifact[]): StoryboardReadiness {
+  const novelScenes = artifacts.filter((artifact) => /(?:^|\/)novel2video\/scenes\/event_\d+\/scene_\d+\.json$/i.test(normalizeArtifactPath(artifact.path))).length;
+  const novelEvents = artifacts.filter((artifact) => /(?:^|\/)novel2video\/events\/event_\d+\.json$/i.test(normalizeArtifactPath(artifact.path))).length;
+  const compressed = artifacts.some((artifact) => /(?:^|\/)novel2video\/novel\/novel_compressed\.txt$/i.test(normalizeArtifactPath(artifact.path)));
+  const eventChars = artifacts.some((artifact) => /(?:^|\/)novel2video\/global_information\/characters\/event_level\//i.test(normalizeArtifactPath(artifact.path)));
+  const novelChars = artifacts.some((artifact) => /(?:^|\/)novel2video\/global_information\/characters\/novel_level\//i.test(normalizeArtifactPath(artifact.path)));
+  const readyToRender = compressed && novelEvents > 0 && novelScenes > 0 && eventChars && novelChars;
+
+  const storyboardFiles = artifacts.filter(isStoryboardArtifact).length;
+  const shotDescriptions = artifacts.filter((artifact) => artifact.name.toLowerCase() === 'shot_description.json').length;
+  const cameraPlans = artifacts.filter((artifact) => artifact.name.toLowerCase() === 'camera_tree.json').length;
+  const frames = artifacts.filter((artifact) => artifact.name.toLowerCase() === 'first_frame.png').length;
+  const clips = artifacts.filter((artifact) => artifact.name.toLowerCase() === 'video.mp4').length;
+  const finalVideos = artifacts.filter(isWorkflowFinalVideo).length;
+  const sceneFinals = artifacts.filter((artifact) => /(?:^|\/)novel2video\/videos\/event_\d+\/scene_\d+\/final_video\.mp4$/i.test(normalizeArtifactPath(artifact.path))).length;
+  const expectedShots = storyboardFiles > 0 ? storyboardFiles : novelScenes;
+  // Novel planning does not produce storyboard/shot/camera files; those appear during scene render.
+  // Mirror backend deps: novel text artifacts alone are enough to call vimax_render_video.
+  const storyboards = readyToRender
+    ? {status: 'ready' as const, count: Math.max(storyboardFiles, novelScenes)}
+    : {status: checkpointStatus(Math.max(storyboardFiles, novelScenes), Math.max(novelScenes, 1)), count: Math.max(storyboardFiles, novelScenes)};
+  const shots = readyToRender && shotDescriptions === 0
+    ? {status: 'ready' as const, count: novelScenes, expected: novelScenes}
+    : {status: checkpointStatus(shotDescriptions, expectedShots), count: shotDescriptions, expected: expectedShots};
+  const cameras = readyToRender && cameraPlans === 0
+    ? {status: 'ready' as const, count: novelScenes, expected: novelScenes}
+    : {status: checkpointStatus(cameraPlans, expectedShots), count: cameraPlans, expected: expectedShots};
+  const hasPlanningOutput = readyToRender || novelScenes > 0 || novelEvents > 0 || storyboardFiles > 0;
+
+  return {
+    overall: readyToRender ? 'ready' : hasPlanningOutput ? 'partial' : 'missing',
+    readyToRender,
+    storyboards,
+    shotDescriptions: shots,
+    cameraPlans: cameras,
+    render: {
+      started: frames > 0 || clips > 0 || sceneFinals > 0 || finalVideos > 0,
+      frames: {status: renderCheckpointStatus(frames, expectedShots), count: frames, expected: expectedShots},
+      clips: {status: renderCheckpointStatus(clips, expectedShots), count: clips, expected: expectedShots},
+      finalVideo: {status: renderCheckpointStatus(finalVideos, 1), count: finalVideos, expected: 1},
+    },
+  };
+}
+
+function isNovelWorkflow(artifacts: Artifact[]): boolean {
+  return artifacts.some((artifact) => {
+    const path = normalizeArtifactPath(artifact.path);
+    return path === 'novel2video' || path.startsWith('novel2video/') || path.includes('/novel2video/');
+  });
+}
+
+function isWorkflowFinalVideo(artifact: Artifact): boolean {
+  const path = normalizeArtifactPath(artifact.path);
+  return /(?:^|\/)(?:idea2video|script2video|novel2video)\/final_video\.mp4$/i.test(path);
 }
 
 export function activeRenderCheckpoint(stage: string): RenderCheckpoint {

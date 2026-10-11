@@ -88,9 +88,10 @@ const enSource = {
       llm: {title: 'Agent LLM', description: 'Planning, tool selection, and conversation'},
       image: {title: 'Image generation', description: 'Characters, keyframes, and shot frames'},
       video: {title: 'Video generation', description: 'Shot clips and final video'},
-      embedding: {title: 'Embedding', description: 'Optional novel retrieval'},
-      reranker: {title: 'Reranker', description: 'Optional novel retrieval ranking'},
+      embedding: {title: 'Embedding', description: 'Required for novel2video planning (retrieval)'},
+      reranker: {title: 'Reranker', description: 'Required for novel2video planning (ranking)'},
     },
+    novelProvidersNote: 'novel2video also needs Embedding and Reranker (API key + base URL), not only LLM / image / video.',
   },
   dialog: {
     deleteTitle: 'Delete project?',

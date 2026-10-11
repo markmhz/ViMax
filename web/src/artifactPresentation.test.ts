@@ -105,6 +105,35 @@ describe('artifact presentation', () => {
     expect(activeRenderCheckpoint('concat_start')).toBe('finalVideo');
   });
 
+  it('treats completed novel planning artifacts as ready to render', () => {
+    const readiness = deriveStoryboardReadiness([
+      makeArtifact('novel2video/novel/novel_compressed.txt'),
+      makeArtifact('novel2video/events/event_0.json'),
+      makeArtifact('novel2video/scenes/event_0/scene_0.json'),
+      makeArtifact('novel2video/global_information/characters/event_level/event_0_characters.json'),
+      makeArtifact('novel2video/global_information/characters/novel_level/novel_characters_after_event_0.json'),
+    ], 0);
+    expect(readiness.readyToRender).toBe(true);
+    expect(readiness.overall).toBe('ready');
+    expect(readiness.storyboards.count).toBe(1);
+    expect(readiness.render.finalVideo.status).toBe('inactive');
+  });
+
+  it('counts only the novel workflow final film, not per-scene finals', () => {
+    const readiness = deriveStoryboardReadiness([
+      makeArtifact('novel2video/novel/novel_compressed.txt'),
+      makeArtifact('novel2video/events/event_0.json'),
+      makeArtifact('novel2video/scenes/event_0/scene_0.json'),
+      makeArtifact('novel2video/global_information/characters/event_level/event_0_characters.json'),
+      makeArtifact('novel2video/global_information/characters/novel_level/novel_characters_after_event_0.json'),
+      makeArtifact('novel2video/videos/event_0/scene_0/final_video.mp4'),
+      makeArtifact('novel2video/final_video.mp4'),
+    ], 0);
+    expect(readiness.render.started).toBe(true);
+    expect(readiness.render.finalVideo.status).toBe('ready');
+    expect(readiness.render.finalVideo.count).toBe(1);
+  });
+
   it('pairs shot documents with visual output from the same shot', () => {
     const shotDocument = makeArtifact('idea2video/scene_0/shots/1/shot_description.json');
     const visuals = relatedVisualArtifacts(shotDocument, [

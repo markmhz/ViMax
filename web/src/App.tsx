@@ -743,7 +743,11 @@ function SettingsView() {
   return (
     <section className="settings-view">
       <header>
-        <div><span>{messages().settings.localConfiguration}</span><h1>{messages().settings.title}</h1></div>
+        <div>
+          <span>{messages().settings.localConfiguration}</span>
+          <h1>{messages().settings.title}</h1>
+          <p className="settings-note">{messages().settings.novelProvidersNote}</p>
+        </div>
         <div className="settings-save-group">
           {status && <span className={status === messages().settings.saved ? 'is-saved' : 'is-error'}>{status}</span>}
           <button className="settings-save" onClick={() => void save()} disabled={saving}>

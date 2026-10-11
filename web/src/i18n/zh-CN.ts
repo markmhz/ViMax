@@ -85,9 +85,10 @@ export const zhCN: MessageTree = {
       llm: {title: '智能体 LLM', description: '规划、工具选择与对话'},
       image: {title: '图像生成', description: '角色、关键帧与镜头画面'},
       video: {title: '视频生成', description: '镜头片段与最终视频'},
-      embedding: {title: '嵌入模型', description: '可选的小说检索'},
-      reranker: {title: '重排序', description: '可选的小说检索排序'},
+      embedding: {title: '嵌入模型', description: '小说转视频（novel2video）规划必需'},
+      reranker: {title: '重排序', description: '小说转视频（novel2video）规划必需'},
     },
+    novelProvidersNote: '使用 novel2video 时，除 LLM / 图像 / 视频外，还需要配置嵌入模型与重排序（API 密钥 + Base URL）。',
   },
   dialog: {
     deleteTitle: '删除项目？',
