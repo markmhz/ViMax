@@ -561,6 +561,15 @@ async def _run_planning_step(
     except asyncio.TimeoutError as exc:
         raise RuntimeError(f"{message} timed out after {timeout_seconds:g}s") from exc
     except Exception as exc:
+        cause = _unwrap_retry_error(exc)
+        detail = _sanitize_error_text(str(cause))
+        if "OutputParserException" in type(cause).__name__ or "Failed to parse" in detail or "Invalid json output" in detail:
+            raise RuntimeError(
+                f"{message} failed: model returned JSON that could not be parsed into the expected schema "
+                f"after local repair and retries. Detail: {detail}"
+            ) from exc
+        if cause is not exc:
+            raise RuntimeError(f"{message} failed: {detail}") from exc
         raise RuntimeError(f"{message} failed: {exc}") from exc
 
 
