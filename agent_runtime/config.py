@@ -124,6 +124,10 @@ def api_provider_from_base_url(base_url: str) -> str:
     normalized = base_url.strip().lower()
     if "openrouter.ai" in normalized:
         return "openrouter"
+    # SenseNova Token Plan: OpenAI-compatible chat + /v1/images/generations.
+    # Route through the OpenRouter-style image client (not Yunwu/Gemini).
+    if "sensenova.cn" in normalized or "sensenova.ai" in normalized:
+        return "openrouter"
     if "yunwu.ai" in normalized:
         return "yunwu"
     if (
