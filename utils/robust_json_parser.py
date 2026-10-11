@@ -199,6 +199,68 @@ def _preview(text: str, limit: int = 240) -> str:
     return compact[: limit - 3] + "..."
 
 
+def _message_reasoning_text(message: Any) -> str:
+    """Pull reasoning / thinking text DeepSeek-style gateways stash when content is empty."""
+    if message is None:
+        return ""
+    chunks: list[str] = []
+    additional = getattr(message, "additional_kwargs", None) or {}
+    metadata = getattr(message, "response_metadata", None) or {}
+    for source in (additional, metadata):
+        if not isinstance(source, dict):
+            continue
+        for key in ("reasoning", "reasoning_content", "reasoning_text", "thinking", "thought"):
+            value = source.get(key)
+            if isinstance(value, str) and value.strip():
+                chunks.append(value)
+            elif isinstance(value, dict):
+                nested = value.get("content") or value.get("text")
+                if isinstance(nested, str) and nested.strip():
+                    chunks.append(nested)
+    # Some gateways put reasoning on the message itself.
+    for attr in ("reasoning", "reasoning_content"):
+        value = getattr(message, attr, None)
+        if isinstance(value, str) and value.strip():
+            chunks.append(value)
+    return "\n".join(chunks)
+
+
+def generation_text_candidates(generation: Generation) -> list[str]:
+    """Ordered text candidates to parse: content first, then reasoning fallbacks."""
+    seen: set[str] = set()
+    candidates: list[str] = []
+
+    def _add(text: Any) -> None:
+        if not isinstance(text, str):
+            return
+        stripped = text.strip()
+        if not stripped or stripped in seen:
+            return
+        seen.add(stripped)
+        candidates.append(text)
+
+    _add(getattr(generation, "text", None))
+    message = getattr(generation, "message", None)
+    if message is not None:
+        content = getattr(message, "content", None)
+        if isinstance(content, str):
+            _add(content)
+        elif isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, str):
+                    parts.append(block)
+                elif isinstance(block, dict) and isinstance(block.get("text"), str):
+                    parts.append(block["text"])
+            _add("\n".join(parts))
+        _add(_message_reasoning_text(message))
+    info = getattr(generation, "generation_info", None) or {}
+    if isinstance(info, dict):
+        for key in ("reasoning", "reasoning_content", "thinking"):
+            _add(info.get(key))
+    return candidates
+
+
 class TrailingCommaTolerantPydanticOutputParser(PydanticOutputParser):
     """PydanticOutputParser that repairs common OpenAI-compatible JSON glitches."""
 
@@ -208,18 +270,37 @@ class TrailingCommaTolerantPydanticOutputParser(PydanticOutputParser):
         except (OutputParserException, ValidationError) as first_error:
             if not result:
                 raise
-            raw_text = result[0].text
-            try:
-                return self._parse_repaired(raw_text)
-            except Exception as repair_error:
+            generation = result[0]
+            candidates = generation_text_candidates(generation)
+            if not candidates:
                 model_name = getattr(self.pydantic_object, "__name__", "model")
                 raise OutputParserException(
-                    f"Failed to parse {model_name} from model output after JSON repair. "
-                    f"Preview: {_preview(raw_text)!r}. "
-                    f"Parser error: {first_error}. Repair error: {repair_error}"
-                ) from repair_error
+                    f"Failed to parse {model_name}: model returned empty content "
+                    f"(and no reasoning text to fall back on). This is often caused by "
+                    f"thinking/reasoning models exhausting max_completion_tokens before "
+                    f"emitting JSON. Retryable after disabling thinking or raising max tokens. "
+                    f"Preview: ''. Parser error: {first_error}"
+                ) from first_error
+            last_error: Exception = first_error
+            for candidate in candidates:
+                try:
+                    return self._parse_repaired(candidate)
+                except Exception as repair_error:  # noqa: PERF203 — try each candidate
+                    last_error = repair_error
+            model_name = getattr(self.pydantic_object, "__name__", "model")
+            raise OutputParserException(
+                f"Failed to parse {model_name} from model output after JSON repair. "
+                f"Preview: {_preview(candidates[0])!r}. "
+                f"Parser error: {first_error}. Repair error: {last_error}"
+            ) from last_error
 
     def parse(self, text: str):
+        if not isinstance(text, str) or not text.strip():
+            model_name = getattr(self.pydantic_object, "__name__", "model")
+            raise OutputParserException(
+                f"Failed to parse {model_name}: model returned empty content. "
+                f"Retryable after disabling thinking or raising max tokens. Preview: ''."
+            )
         try:
             return super().parse(text)
         except (OutputParserException, ValidationError) as first_error:
@@ -234,6 +315,8 @@ class TrailingCommaTolerantPydanticOutputParser(PydanticOutputParser):
                 ) from repair_error
 
     def _parse_repaired(self, text: str):
+        if not isinstance(text, str) or not text.strip():
+            raise OutputParserException("Empty model output; nothing to repair")
         payload = repair_and_parse_json(text, self.pydantic_object)
         return self.pydantic_object.model_validate(payload)
 

@@ -14,6 +14,10 @@ from langchain_core.exceptions import OutputParserException
 from langchain_core.output_parsers import PydanticOutputParser as StockParser
 from pydantic import BaseModel, Field
 
+from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatGeneration
+
+from agents.camera_image_generator import CameraTreeResponse
 from agents.storyboard_artist import VisDescDecompositionResponse
 from interfaces.shot_description import ShotBriefDescription
 from utils.robust_json_parser import (
@@ -177,6 +181,56 @@ class RepairHelpersUnitTests(unittest.TestCase):
         )
         self.assertIn("storyboard", value)
         self.assertEqual(value["storyboard"][0]["audio_desc"], "")
+
+
+class DeepSeekEmptyContentReasoningFallbackTests(unittest.TestCase):
+    """DeepSeek-V4.1-Flash on Thunisoft often returns content='' and JSON in reasoning."""
+
+    def test_camera_tree_parses_json_from_reasoning_when_content_empty(self):
+        payload = {
+            "camera_parent_items": [
+                {
+                    "parent_cam_idx": None,
+                    "parent_shot_idx": None,
+                    "reason": "CAMERA_0 establishes the scene",
+                    "is_parent_fully_covers_child": None,
+                    "missing_info": None,
+                },
+                {
+                    "parent_cam_idx": 0,
+                    "parent_shot_idx": 0,
+                    "reason": "Close-up covered by wide shot",
+                    "is_parent_fully_covers_child": True,
+                    "missing_info": None,
+                },
+            ]
+        }
+        import json
+
+        reasoning = json.dumps(payload, ensure_ascii=False)
+        message = AIMessage(content="", additional_kwargs={"reasoning": reasoning})
+        generation = ChatGeneration(message=message)
+        parser = TrailingCommaTolerantPydanticOutputParser(pydantic_object=CameraTreeResponse)
+        parsed = parser.parse_result([generation])
+        self.assertEqual(len(parsed.camera_parent_items), 2)
+        self.assertIsNone(parsed.camera_parent_items[0].parent_cam_idx)
+        self.assertEqual(parsed.camera_parent_items[1].parent_cam_idx, 0)
+
+    def test_empty_content_without_reasoning_is_clear_retryable_error(self):
+        parser = TrailingCommaTolerantPydanticOutputParser(pydantic_object=CameraTreeResponse)
+        with self.assertRaises(OutputParserException) as ctx:
+            parser.parse("   ")
+        message = str(ctx.exception)
+        self.assertIn("empty content", message.lower())
+        self.assertIn("CameraTreeResponse", message)
+        self.assertIn("thinking", message.lower())
+
+    def test_camera_tree_uses_tolerant_parser_alias(self):
+        from agents import camera_image_generator as cig
+        from agents import storyboard_artist as sba
+
+        self.assertIs(cig.PydanticOutputParser, TrailingCommaTolerantPydanticOutputParser)
+        self.assertIs(sba.PydanticOutputParser, TrailingCommaTolerantPydanticOutputParser)
 
 
 if __name__ == "__main__":
