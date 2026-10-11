@@ -2,7 +2,7 @@ import {mkdtemp, mkdir, readFile, stat, writeFile} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {afterEach, describe, expect, it} from 'vitest';
-import {deleteSession, listSessionArtifacts, markAgentTurnBusy, readSessionHistory, readSessionState, resolveArtifactPath, shouldDeferAgentReload, storeWorkspaceUpload} from './server-lib.mjs';
+import {agentChildEnv, deleteSession, listSessionArtifacts, markAgentTurnBusy, readSessionHistory, readSessionState, resolveArtifactPath, scrubSurrogates, shouldDeferAgentReload, storeWorkspaceUpload} from './server-lib.mjs';
 
 const roots = [];
 
@@ -115,5 +115,24 @@ describe('web bridge state', () => {
     busy = markAgentTurnBusy({type: 'done'}, busy);
     expect(busy).toBe(false);
     expect(shouldDeferAgentReload({agentTurnBusy: busy})).toBe(false);
+  });
+
+  it('scrubs lone UTF-16 surrogates from prompts before agent stdin', () => {
+    const dirty = '做一\uDCAA个猫咪和狗见面的卡通短片';
+    const cleaned = scrubSurrogates(dirty);
+    expect(cleaned).not.toContain('\uDCAA');
+    expect(cleaned).toContain('猫咪');
+    expect(cleaned).toContain('卡通短片');
+    expect(Buffer.from(cleaned, 'utf8').toString('utf8')).toBe(cleaned);
+  });
+
+  it('forces UTF-8 Python stdio env for Windows agent spawn', () => {
+    const env = agentChildEnv({PATH: '/bin', PYTHONIOENCODING: undefined});
+    expect(env.PYTHONUTF8).toBe('1');
+    expect(env.PYTHONIOENCODING).toBe('utf-8:replace');
+    expect(env.PATH).toBe('/bin');
+    const kept = agentChildEnv({PYTHONIOENCODING: 'utf-8'});
+    expect(kept.PYTHONIOENCODING).toBe('utf-8');
+    expect(kept.PYTHONUTF8).toBe('1');
   });
 });

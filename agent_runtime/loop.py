@@ -41,6 +41,9 @@ class AgentLoop:
         return f"Compacted context {result.estimated_tokens_before} -> {result.estimated_tokens_after} ({result.mode})."
 
     async def stream_events(self, user_input: str) -> AsyncIterator[dict[str, Any]]:
+        from utils.text import scrub_surrogates
+
+        user_input = scrub_surrogates(str(user_input or ""))
         control = TurnControl()
         yield {"type": "turn", "turn_id": control.turn_id, "turn": {"id": control.turn_id}}
         tool_schemas = self.tool_registry.list_function_tools()

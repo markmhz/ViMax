@@ -6,6 +6,7 @@ import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {readAgentConfig, saveAgentConfig} from './config-store.mjs';
 import {
+  agentChildEnv,
   artifactContentType,
   deleteSession,
   listSessionArtifacts,
@@ -13,6 +14,7 @@ import {
   readSessionHistory,
   readSessionState,
   resolveArtifactPath,
+  scrubSurrogates,
   shouldDeferAgentReload,
   storeWorkspaceUpload,
 } from './server-lib.mjs';
@@ -119,10 +121,10 @@ const server = createServer(async (request, response) => {
     }
     if (url.pathname === '/api/messages' && request.method === 'POST') {
       const body = await readJsonBody(request);
-      const text = String(body.text || '').trim();
+      const text = scrubSurrogates(String(body.text || '').trim());
       if (!text) return sendJson(response, 400, {error: msg('messageRequired')});
       if (!agentProcess?.stdin.writable) return sendJson(response, 409, {error: msg('agentNotRunning')});
-      agentProcess.stdin.write(`${text}\n`);
+      agentProcess.stdin.write(`${text}\n`, 'utf8');
       return sendJson(response, 202, {ok: true});
     }
     if (url.pathname === '/api/agent/stop' && request.method === 'POST') {
@@ -175,7 +177,7 @@ async function startAgent({newSession, sessionId, projectName = ''}) {
   activeSessionId = sessionId;
   const child = spawn(command, [...args, 'main_agent.py', '--jsonl', '--stdin-repl', ...sessionArgs], {
     cwd: repoRoot,
-    env: process.env,
+    env: agentChildEnv(process.env),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   agentProcess = child;
@@ -258,8 +260,18 @@ function openEventStream(request, response) {
 }
 
 function broadcast(event) {
-  const payload = `data: ${JSON.stringify(event)}\n\n`;
+  // Scrub before stringify so SSE clients never see lone surrogates from stderr/pipes.
+  const payload = `data: ${JSON.stringify(scrubEventStrings(event))}\n\n`;
   for (const subscriber of subscribers) subscriber.write(payload);
+}
+
+function scrubEventStrings(value) {
+  if (typeof value === 'string') return scrubSurrogates(value);
+  if (Array.isArray(value)) return value.map(scrubEventStrings);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, scrubEventStrings(item)]));
+  }
+  return value;
 }
 
 function stopAgent(reason) {
