@@ -142,6 +142,12 @@ function activityId(turnId: string, toolId: string | undefined, name: string) {
 }
 
 export function humanize(value: string) {
+  const catalog = ui();
+  const tools = catalog.humanize.tools as Record<string, string>;
+  const stageLabels = catalog.humanize.stages as Record<string, string>;
+  const sessionStages = catalog.stages as Record<string, string>;
+  const mapped = tools[value] || stageLabels[value] || sessionStages[value];
+  if (mapped) return mapped;
   return value
     .replace(/[_-]+/g, ' ')
     .replace(/\b\w/g, (letter) => letter.toUpperCase())

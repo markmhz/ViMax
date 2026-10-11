@@ -259,10 +259,49 @@ class NovelAdapterTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue((root / "novel2video" / "events" / "event_0.json").exists())
             self.assertIn("novel2video/scenes/event_*/scene_*.json", payload["generated"])
             self.assertTrue(payload["ready_for_scene_render"])
+            self.assertEqual(payload["novel_path"], "")
+            self.assertEqual(payload["novel_chars"], len("Hero opens a door."))
             self.assertEqual(index.active()["stage"], "novel_planned")
             stages = [event["progress"]["stage"] for event in progress_events if event.get("type") == "tool_progress"]
             self.assertIn("novel_plan_text_artifacts", stages)
             self.assertIn("merge_characters", stages)
+
+    async def test_novel_path_reads_upload_without_pasting_full_text(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            index = SessionIndex(tmp)
+            session = index.create(project_name="Upload novel")
+            working_dir = Path(tmp) / session["working_dir"]
+            uploads = working_dir / "uploads"
+            uploads.mkdir(parents=True, exist_ok=True)
+            novel_body = "Chapter one. The hero opens a door into rain."
+            (uploads / "chapter1.txt").write_text(novel_body, encoding="utf-8")
+            adapter = ViMaxAdapters(Path(tmp), index)
+            with patch("agent_runtime.vimax_adapters._build_novel_pipeline", side_effect=lambda working_dir: FakeNovelPipeline(Path(working_dir))) as factory:
+                result = await adapter.vimax_novel_planning({"novel_path": "uploads/chapter1.txt"})
+            self.assertTrue(result.ok, result.content)
+            payload = json.loads(result.content)
+            self.assertEqual(payload["novel_path"], "uploads/chapter1.txt")
+            self.assertEqual(payload["novel_chars"], len(novel_body))
+            self.assertEqual(factory.call_args.args[0], working_dir / "novel2video")
+
+    async def test_novel_path_missing_file_returns_clear_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            index = SessionIndex(tmp)
+            index.create(project_name="Missing upload")
+            adapter = ViMaxAdapters(Path(tmp), index)
+            result = await adapter.vimax_novel_planning({"novel_path": "uploads/missing.txt"})
+            self.assertFalse(result.ok)
+            self.assertEqual(result.metadata.get("error_type"), "novel_path_missing")
+            self.assertIn("not found", result.content.lower())
+
+    async def test_novel_path_rejects_workspace_escape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            index = SessionIndex(tmp)
+            index.create(project_name="Escape")
+            adapter = ViMaxAdapters(Path(tmp), index)
+            result = await adapter.vimax_novel_planning({"novel_path": "../outside.txt"})
+            self.assertFalse(result.ok)
+            self.assertEqual(result.metadata.get("error_type"), "novel_path_invalid")
 
     async def test_render_video_routes_novel2video_with_mock_pipeline(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -25,6 +25,7 @@ from tools.image_generator_nanobanana_yunwu_api import ImageGeneratorNanobananaY
 from tools.image_generator_openrouter_api import ImageGeneratorOpenRouterAPI
 from tools.reranker_bge_silicon_api import RerankerBgeSiliconapi
 from tools.video_generator_openrouter_api import VideoGeneratorOpenRouterAPI
+from tools.video_generator_veo_google_api import VideoGeneratorVeoGoogleAPI
 from tools.video_generator_veo_yunwu_api import VideoGeneratorVeoYunwuAPI
 
 from .config import api_provider_from_base_url, embedding_api_key, embedding_base_url, embedding_model, embedding_model_provider, image_api_key, image_base_url, image_model, llm_api_key, llm_base_url, llm_model, llm_model_provider, reranker_api_key, reranker_base_url, reranker_model, video_api_key, video_base_url, video_model, video_provider
@@ -71,13 +72,16 @@ def build_vimax_adapter_specs(workspace_root: str | Path, session_index: Any) ->
                 "Create ViMax structured text artifacts from a novel or novel excerpt. "
                 "This writes novel2video/novel, events, relevant_chunks, scenes, and global_information text artifacts. "
                 "Requires embedding and reranker credentials in addition to the LLM. "
-                "Use this when the user provides long prose, a novel excerpt, or asks for novel-to-video planning. Pass the active session_id when the user is working in a selected empty project. "
+                "Prefer novel_path for uploaded workspace files (e.g. uploads/chapter.txt) instead of pasting huge novel_text. "
+                "Provide novel_text and/or novel_path. Use this when the user provides long prose, a novel excerpt, an uploaded novel file, or asks for novel-to-video planning. "
+                "Pass the active session_id when the user is working in a selected empty project. "
                 "It does not generate character portraits, scene videos, or final video."
             ),
             handler=adapter.vimax_novel_planning,
             schema={
                 "session_id": ToolArgumentSchema(str, required=False, default=""),
-                "novel_text": ToolArgumentSchema(str, required=True),
+                "novel_text": ToolArgumentSchema(str, required=False, default=""),
+                "novel_path": ToolArgumentSchema(str, required=False, default=""),
                 "user_requirement": ToolArgumentSchema(str, required=False, default=""),
                 "style": ToolArgumentSchema(str, required=False, default=""),
             },
@@ -285,23 +289,43 @@ class ViMaxAdapters:
 
     async def vimax_novel_planning(self, args: dict[str, Any], runtime: ToolRuntimeContext | None = None) -> ToolResult:
         novel_text = str(args.get("novel_text", "") or "").strip()
+        novel_path = str(args.get("novel_path", "") or "").strip()
         user_requirement = str(args.get("user_requirement", "") or "").strip()
         style = str(args.get("style", "") or "").strip() or "Cinematic, coherent, 16:9"
-        if not novel_text:
-            return ToolResult("vimax_novel_planning", False, "novel_text is required for novel planning.", {"error_type": "missing_input"})
-
         session_id_arg = str(args.get("session_id", "") or "").strip()
-        session = self._resolve_session(session_id_arg, idea=novel_text, script="", user_requirement=user_requirement, style=style)
+        # Resolve session first so novel_path can be read from the active/requested workspace.
+        session = self._resolve_session(
+            session_id_arg,
+            idea=novel_text or (f"novel:{novel_path}" if novel_path else ""),
+            script="",
+            user_requirement=user_requirement,
+            style=style,
+        )
         session_id = session["session_id"]
         working_dir = self.session_index.working_dir(session_id)
+        novel_source_path = ""
+        try:
+            novel_text, novel_source_path = _resolve_novel_text(working_dir, novel_text=novel_text, novel_path=novel_path)
+        except ValueError as exc:
+            return ToolResult("vimax_novel_planning", False, str(exc), {"error_type": "missing_input", "session_id": session_id})
+        except FileNotFoundError as exc:
+            return ToolResult("vimax_novel_planning", False, str(exc), {"error_type": "novel_path_missing", "session_id": session_id, "novel_path": novel_path})
+        except RuntimeError as exc:
+            return ToolResult("vimax_novel_planning", False, str(exc), {"error_type": "novel_path_invalid", "session_id": session_id, "novel_path": novel_path})
+
         novel_dir = working_dir / "novel2video"
         novel_dir.mkdir(parents=True, exist_ok=True)
         generated_before = self.session_index.artifact_checklist(session_id)
+        self._update_session_metadata(session_id, idea=novel_text[:500], user_requirement=user_requirement, style=style)
 
         try:
             self.session_index.update_stage(session_id, "novel_planning", "Generating novel structured text artifacts")
             if runtime:
-                runtime.emit_progress("Starting novel planning", stage="starting", metadata={"session_id": session_id})
+                runtime.emit_progress(
+                    "Starting novel planning",
+                    stage="starting",
+                    metadata={"session_id": session_id, "novel_path": novel_source_path, "novel_chars": len(novel_text)},
+                )
                 await asyncio.sleep(0)
             pipeline = _build_novel_pipeline(novel_dir)
             await _run_planning_step(
@@ -336,6 +360,8 @@ class ViMaxAdapters:
             "reused": reused,
             "missing": missing,
             "ready_for_scene_render": ready,
+            "novel_path": novel_source_path,
+            "novel_chars": len(novel_text),
         }
         return ToolResult("vimax_novel_planning", True, json.dumps(payload, ensure_ascii=False, indent=2), payload)
 
@@ -592,7 +618,7 @@ def _build_image_generator() -> ImageGeneratorNanobananaYunwuAPI | ImageGenerato
     return ImageGeneratorNanobananaYunwuAPI(api_key=api_key, model=model, base_url=base_url)
 
 
-def _build_video_generator() -> VideoGeneratorVeoYunwuAPI | VideoGeneratorOpenRouterAPI:
+def _build_video_generator() -> VideoGeneratorVeoYunwuAPI | VideoGeneratorOpenRouterAPI | VideoGeneratorVeoGoogleAPI:
     api_key = video_api_key()
     if not api_key:
         raise RuntimeError("VIMAX_VIDEO_API_KEY, VIMAX_LLM_API_KEY, or configs/agent.local.yaml video/llm api_key is required for video generation")
@@ -603,7 +629,64 @@ def _build_video_generator() -> VideoGeneratorVeoYunwuAPI | VideoGeneratorOpenRo
         return VideoGeneratorOpenRouterAPI(api_key=api_key, model=model, base_url=base_url)
     if provider == "yunwu":
         return VideoGeneratorVeoYunwuAPI(api_key=api_key, t2v_model=model, ff2v_model=model, base_url=base_url)
-    raise RuntimeError(f"Unsupported video base_url for automatic provider matching: {base_url}")
+    if provider == "google":
+        return VideoGeneratorVeoGoogleAPI(api_key=api_key, t2v_model=model, ff2v_model=model)
+    raise RuntimeError(
+        "Unsupported video provider/base_url. "
+        "Set video.base_url to an OpenRouter or Yunwu URL, or set video.provider to "
+        "openrouter | yunwu | google in configs/agent.local.yaml (Settings → Video). "
+        f"Got provider={provider!r}, base_url={base_url!r}."
+    )
+
+
+NOVEL_PATH_MAX_BYTES = 2_000_000
+NOVEL_TEXT_MAX_CHARS = 400_000
+
+
+def _resolve_novel_text(working_dir: Path, *, novel_text: str, novel_path: str) -> tuple[str, str]:
+    """Load novel prose from inline text and/or a session-relative upload path."""
+    path_text = ""
+    resolved_path = ""
+    if novel_path:
+        candidate = _safe_session_file(working_dir, novel_path)
+        resolved_path = candidate.relative_to(working_dir).as_posix()
+        size = candidate.stat().st_size
+        if size > NOVEL_PATH_MAX_BYTES:
+            raise RuntimeError(
+                f"Novel file is too large ({size} bytes). Max is {NOVEL_PATH_MAX_BYTES} bytes. "
+                "Split the file or upload a shorter excerpt."
+            )
+        path_text = candidate.read_text(encoding="utf-8").strip()
+        if not path_text:
+            raise RuntimeError(f"Novel file is empty: {resolved_path}")
+    text = novel_text or path_text
+    if novel_text and path_text and novel_text != path_text:
+        # Prefer the uploaded file when both are provided; inline text is treated as an optional prefix note.
+        text = path_text
+    if not text:
+        raise ValueError("Provide novel_text or novel_path (e.g. uploads/novel.txt) for novel planning.")
+    if len(text) > NOVEL_TEXT_MAX_CHARS:
+        raise RuntimeError(
+            f"Novel text is too long ({len(text)} characters). Max is {NOVEL_TEXT_MAX_CHARS}. "
+            "Upload a shorter excerpt via novel_path, or trim the source."
+        )
+    return text, resolved_path
+
+
+def _safe_session_file(working_dir: Path, raw_path: str) -> Path:
+    normalized = raw_path.replace("\\", "/").strip()
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    normalized = normalized.lstrip("/")
+    if not normalized or normalized.startswith("../") or "/../" in f"/{normalized}/":
+        raise RuntimeError(f"Invalid novel_path: {raw_path}")
+    candidate = (working_dir / normalized).resolve()
+    root = working_dir.resolve()
+    if candidate != root and root not in candidate.parents:
+        raise RuntimeError(f"novel_path escapes the session workspace: {raw_path}")
+    if not candidate.is_file():
+        raise FileNotFoundError(f"Novel file not found in session workspace: {normalized}")
+    return candidate
 
 
 class _IdentityRewriter:

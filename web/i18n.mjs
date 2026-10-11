@@ -39,6 +39,7 @@ const en = {
   mustBeString: '{label} must be a string',
   tooLong: '{label} is too long',
   mustUseHttp: '{label} must use http:// or https://',
+  invalidVideoProvider: '{label} must be openrouter, yunwu, google, or empty',
 };
 
 const zhCN = {
@@ -78,6 +79,7 @@ const zhCN = {
   mustBeString: '{label} 必须是字符串',
   tooLong: '{label} 过长',
   mustUseHttp: '{label} 必须使用 http:// 或 https://',
+  invalidVideoProvider: '{label} 必须是 openrouter、yunwu、google 或留空',
 };
 
 const catalogs = {en, 'zh-CN': zhCN};

@@ -6,10 +6,12 @@ import {parse, stringify} from 'yaml';
 const SECTION_FIELDS = {
   llm: ['model_provider', 'model', 'base_url'],
   image: ['model', 'base_url'],
-  video: ['model', 'base_url'],
+  video: ['provider', 'model', 'base_url'],
   embedding: ['model_provider', 'model', 'base_url'],
   reranker: ['model', 'base_url'],
 };
+
+const VIDEO_PROVIDERS = new Set(['', 'openrouter', 'yunwu', 'google']);
 
 export async function readAgentConfig(repoRoot) {
   const {payload} = await loadConfig(repoRoot);
@@ -74,6 +76,13 @@ function validatedValue(value, label, maxLength) {
   if (normalized.length > maxLength) throw new Error(msg('tooLong', {label}));
   if (label.endsWith('.base_url') && normalized && !/^https?:\/\//i.test(normalized)) {
     throw new Error(msg('mustUseHttp', {label}));
+  }
+  if (label === 'video.provider') {
+    const provider = normalized.toLowerCase();
+    if (!VIDEO_PROVIDERS.has(provider)) {
+      throw new Error(msg('invalidVideoProvider', {label}));
+    }
+    return provider;
   }
   return normalized;
 }

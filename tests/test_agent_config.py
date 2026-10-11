@@ -99,7 +99,25 @@ class AgentConfigTests(unittest.TestCase):
     def test_video_provider_is_inferred_from_base_url(self):
         self.assertEqual(api_provider_from_base_url("https://openrouter.ai/api/v1"), "openrouter")
         self.assertEqual(api_provider_from_base_url("https://yunwu.ai/v1"), "yunwu")
+        self.assertEqual(api_provider_from_base_url("https://generativelanguage.googleapis.com"), "google")
         self.assertEqual(api_provider_from_base_url("https://example.com/v1"), "")
+
+    def test_explicit_video_provider_overrides_base_url_inference(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_dir = Path(tmp) / "configs"
+            config_dir.mkdir()
+            (config_dir / "agent.local.yaml").write_text(yaml.safe_dump({
+                "video": {
+                    "provider": "google",
+                    "model": "veo-3",
+                    "base_url": "https://openrouter.ai/api/v1",
+                    "api_key": "video-key",
+                },
+            }), encoding="utf-8")
+            with patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(video_provider(tmp), "google")
+            with patch.dict(os.environ, {"VIMAX_VIDEO_PROVIDER": "yunwu"}, clear=True):
+                self.assertEqual(video_provider(tmp), "yunwu")
 
     def test_image_candidates_default_and_environment_override(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {}, clear=True):
