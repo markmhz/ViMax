@@ -37,11 +37,14 @@ class PromptBuilder:
         return [{"role": "system", "content": system}, {"role": "user", "content": user_input}]
 
     def trace(self, parts: list[PromptPart]) -> dict[str, Any]:
+        from utils.text import scrub_surrogates
+
         segments = []
         totals = {"stable_tokens": 0, "dynamic_tokens": 0, "total_tokens": 0, "compacted_summary_tokens": 0}
         for idx, part in enumerate(parts):
-            encoded = part.body.encode("utf-8")
-            estimated = max(1, len(part.body) // 4)
+            body = scrub_surrogates(part.body)
+            encoded = body.encode("utf-8")
+            estimated = max(1, len(body) // 4)
             segments.append({"id": part.id, "index": idx, "title": part.title, "zone": part.zone, "category": part.category, "bytes": len(encoded), "estimated_tokens": estimated})
             if part.zone == "stable":
                 totals["stable_tokens"] += estimated

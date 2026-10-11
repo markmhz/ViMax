@@ -2,12 +2,24 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import sys
 from typing import Any, Iterable
 from uuid import uuid4
 
+from utils.text import safe_json_dumps, scrub_surrogates
+
 ORIGINAL_STDOUT = sys.stdout
+
+
+def configure_stdio_utf8() -> None:
+    """Prefer UTF-8 stdio with replacement for bad bytes (Windows-safe)."""
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
 
 
 def event_stdout():
@@ -42,29 +54,30 @@ def load_session_index():
 def print_event(event: dict[str, Any], *, jsonl: bool) -> None:
     out = event_stdout()
     if jsonl:
-        print(json.dumps(event, ensure_ascii=False, default=str), file=out, flush=True)
+        print(safe_json_dumps(event), file=out, flush=True)
         return
     event_type = event.get("type")
     if event_type == "turn":
         print(f"· turn: {event.get('turn_id', '')}", file=out, flush=True)
     elif event_type == "token":
-        print(event.get("delta", ""), end="", file=out, flush=True)
+        print(scrub_surrogates(str(event.get("delta", ""))), end="", file=out, flush=True)
     elif event_type == "tool_start":
         tool = event.get("tool", {})
         print(f"\n· tool: {tool.get('name')} started", file=out, flush=True)
     elif event_type == "tool_progress":
         progress = event.get("progress", {})
         tool = event.get("tool", {})
-        print(f"· tool: {tool.get('name')} {progress.get('stage', 'running')}: {progress.get('message', '')}", file=out, flush=True)
+        message = scrub_surrogates(str(progress.get("message", "")))
+        print(f"· tool: {tool.get('name')} {progress.get('stage', 'running')}: {message}", file=out, flush=True)
     elif event_type == "tool_result":
         result = event["tool_result"]
         status = "done" if result.get("ok") else "error"
         print(f"· tool: {result.get('name')} {status}", file=out, flush=True)
     elif event_type == "terminal":
         stream = event.get("stream", "stdout")
-        print(f"· terminal[{stream}]: {event.get('line', '')}", file=out, flush=True)
+        print(f"· terminal[{stream}]: {scrub_surrogates(str(event.get('line', '')))}", file=out, flush=True)
     elif event_type == "status":
-        print(f"· status: {event.get('phase')}: {event.get('message', '')}", file=out, flush=True)
+        print(f"· status: {event.get('phase')}: {scrub_surrogates(str(event.get('message', '')))}", file=out, flush=True)
     elif event_type == "session":
         session = (event.get("session") or {}).get("session") or {}
         if session:
@@ -72,21 +85,21 @@ def print_event(event: dict[str, Any], *, jsonl: bool) -> None:
     elif event_type == "done":
         print("", file=out, flush=True)
     elif event_type == "error":
-        print(f"\nerror: {event.get('message', '')}", file=out, flush=True)
+        print(f"\nerror: {scrub_surrogates(str(event.get('message', '')))}", file=out, flush=True)
 
 
 def prompt_inputs(args: argparse.Namespace) -> Iterable[str]:
     if args.once:
-        yield args.once
+        yield scrub_surrogates(args.once)
         return
     if args.stdin_repl:
         for line in sys.stdin:
-            user_input = line.strip()
+            user_input = scrub_surrogates(line.strip())
             if user_input:
                 yield user_input
         return
     if not sys.stdin.isatty():
-        payload = sys.stdin.read().strip()
+        payload = scrub_surrogates(sys.stdin.read().strip())
         if payload:
             yield payload
         return
@@ -95,11 +108,13 @@ def prompt_inputs(args: argparse.Namespace) -> Iterable[str]:
             user_input = input("› " if not args.jsonl else "")
         except EOFError:
             break
-        if user_input.strip():
-            yield user_input.strip()
+        cleaned = scrub_surrogates(user_input.strip())
+        if cleaned:
+            yield cleaned
 
 
 async def amain(argv: list[str] | None = None) -> int:
+    configure_stdio_utf8()
     args = parse_args(argv)
     if args.session and args.new_session:
         print("error: --session and --new-session cannot be used together", file=sys.stderr)

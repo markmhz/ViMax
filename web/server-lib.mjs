@@ -6,6 +6,24 @@ const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mov']);
 const TEXT_EXTENSIONS = new Set(['.txt', '.md', '.json']);
 
+// Lone UTF-16 surrogates cannot be UTF-8 encoded. Windows console/clipboard/
+// pipe mis-decodes sometimes inject them into prompts before they reach Python.
+const SURROGATE_RE = /[\uD800-\uDFFF]/g;
+
+/** Replace lone UTF-16 surrogates so JSON/stdio UTF-8 writers never crash. */
+export function scrubSurrogates(value, replacement = '\uFFFD') {
+  return String(value ?? '').replace(SURROGATE_RE, replacement);
+}
+
+/** Child-process env for the Python agent: force UTF-8 stdio on Windows. */
+export function agentChildEnv(baseEnv = process.env) {
+  return {
+    ...baseEnv,
+    PYTHONUTF8: '1',
+    PYTHONIOENCODING: baseEnv.PYTHONIOENCODING || 'utf-8:replace',
+  };
+}
+
 /** Whether saving Settings should defer killing/restarting a busy agent mid-turn. */
 export function shouldDeferAgentReload({agentTurnBusy} = {}) {
   return Boolean(agentTurnBusy);

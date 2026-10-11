@@ -127,8 +127,10 @@ class SessionIndex:
             return {"active_session_id": "", "sessions": {}}
 
     def save(self, data: dict[str, Any]) -> None:
+        from utils.text import safe_json_dumps
+
         tmp_path = self.sessions_path.with_name("sessions.json.tmp")
-        tmp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp_path.write_text(safe_json_dumps(data, indent=2), encoding="utf-8", errors="replace")
         _replace_with_retry(tmp_path, self.sessions_path)
 
     def active(self) -> dict[str, Any] | None:
@@ -341,10 +343,12 @@ class SessionIndex:
         self.memory_path.write_text(text, encoding="utf-8")
 
     def append_log(self, name: str, payload: dict[str, Any]) -> None:
+        from utils.text import safe_json_dumps
+
         event = {"timestamp": datetime.now().isoformat(timespec="seconds"), **payload}
         path = self.logs_dir / f"{name}.jsonl"
-        with path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
+        with path.open("a", encoding="utf-8", errors="replace") as f:
+            f.write(safe_json_dumps(event) + "\n")
 
     def snapshot(self) -> dict[str, Any]:
         active = self.active()
