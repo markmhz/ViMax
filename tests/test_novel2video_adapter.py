@@ -282,7 +282,8 @@ class NovelAdapterTests(unittest.IsolatedAsyncioTestCase):
             payload = json.loads(result.content)
             self.assertEqual(payload["novel_path"], "uploads/chapter1.txt")
             self.assertEqual(payload["novel_chars"], len(novel_body))
-            self.assertEqual(factory.call_args.args[0], working_dir / "novel2video")
+            expected_novel_dir = index.working_dir(session["session_id"]) / "novel2video"
+            self.assertEqual(Path(factory.call_args.args[0]).resolve(), expected_novel_dir.resolve())
 
     async def test_novel_path_missing_file_returns_clear_error(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -323,7 +324,10 @@ class NovelAdapterTests(unittest.IsolatedAsyncioTestCase):
             payload = json.loads(result.content)
             self.assertEqual(payload["render_mode"], "novel2video")
             self.assertTrue(payload["scene_render_completed"])
-            self.assertEqual(payload["final_video_path"], f"{record['working_dir']}/novel2video/final_video.mp4")
+            self.assertEqual(
+                Path(payload["final_video_path"]).as_posix(),
+                f"{Path(record['working_dir']).as_posix()}/novel2video/final_video.mp4",
+            )
             self.assertEqual(payload["scene_count"], 1)
             self.assertEqual(index.get(record["session_id"])["stage"], "rendered")
             self.assertTrue((root / "novel2video" / "videos" / "event_0" / "scene_0" / "final_video.mp4").exists())

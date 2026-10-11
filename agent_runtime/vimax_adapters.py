@@ -393,7 +393,7 @@ class ViMaxAdapters:
                 with _suppress_pipeline_output():
                     final_video = await idea_pipeline(idea=str(session.get("idea", "")), user_requirement=str(session.get("user_requirement", "")), style=str(session.get("style", "")), quiet=True, progress=_pipeline_progress(runtime, session_id))
                 self.session_index.update_stage(session_id, "rendered", "Final video rendered")
-                payload = {"session_id": session_id, "render_mode": "idea2video", "render_started": True, "render_completed": True, "final_video_path": str(Path(final_video).relative_to(self.workspace_root)), "missing": []}
+                payload = {"session_id": session_id, "render_mode": "idea2video", "render_started": True, "render_completed": True, "final_video_path": _workspace_relative(self.workspace_root, final_video), "missing": []}
                 _write_render_status(working_dir, status="rendered", payload=payload)
                 return ToolResult("vimax_render_video", True, json.dumps(payload, ensure_ascii=False, indent=2), payload)
             if _script_mode_ready(checklist):
@@ -404,7 +404,7 @@ class ViMaxAdapters:
                 with _suppress_pipeline_output():
                     final_video = await pipeline(script=script_text, user_requirement=str(session.get("user_requirement", "")), style=str(session.get("style", "")), characters=characters, quiet=True, progress=_pipeline_progress(runtime, session_id))
                 self.session_index.update_stage(session_id, "rendered", "Final video rendered")
-                payload = {"session_id": session_id, "render_mode": "script2video", "render_started": True, "render_completed": True, "final_video_path": str(Path(final_video).relative_to(self.workspace_root)), "missing": []}
+                payload = {"session_id": session_id, "render_mode": "script2video", "render_started": True, "render_completed": True, "final_video_path": _workspace_relative(self.workspace_root, final_video), "missing": []}
                 _write_render_status(working_dir, status="rendered", payload=payload)
                 return ToolResult("vimax_render_video", True, json.dumps(payload, ensure_ascii=False, indent=2), payload)
             if _novel_mode_ready(checklist):
@@ -425,9 +425,9 @@ class ViMaxAdapters:
                     "render_started": True,
                     "render_completed": True,
                     "scene_render_completed": True,
-                    "final_video_path": str(final_video.relative_to(self.workspace_root)),
-                    "scene_videos_dir": str(scene_videos_dir.relative_to(self.workspace_root)),
-                    "scene_video_dirs": [str(Path(path).relative_to(self.workspace_root)) for path in render_result.get("scene_video_dirs", [])],
+                    "final_video_path": _workspace_relative(self.workspace_root, final_video),
+                    "scene_videos_dir": _workspace_relative(self.workspace_root, scene_videos_dir),
+                    "scene_video_dirs": [_workspace_relative(self.workspace_root, path) for path in render_result.get("scene_video_dirs", [])],
                     "scene_count": render_result.get("scene_count", 0),
                     "missing": [],
                 }
@@ -641,6 +641,17 @@ def _build_video_generator() -> VideoGeneratorVeoYunwuAPI | VideoGeneratorOpenRo
 
 NOVEL_PATH_MAX_BYTES = 2_000_000
 NOVEL_TEXT_MAX_CHARS = 400_000
+
+
+def _workspace_relative(workspace_root: Path, path: str | Path) -> str:
+    """Return a POSIX relative path under workspace_root (Windows short/long safe)."""
+    root = Path(workspace_root).resolve()
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = (root / candidate).resolve()
+    else:
+        candidate = candidate.resolve()
+    return candidate.relative_to(root).as_posix()
 
 
 def _resolve_novel_text(working_dir: Path, *, novel_text: str, novel_path: str) -> tuple[str, str]:

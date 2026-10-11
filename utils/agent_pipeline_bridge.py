@@ -25,6 +25,7 @@ from agent_runtime.config import (
     video_base_url,
     video_model,
 )
+from utils.provider_presets import PROVIDER_PRESETS
 
 
 def apply_agent_local_overrides(config: dict[str, Any], workspace_root: str | Path = ".") -> dict[str, Any]:
@@ -40,9 +41,13 @@ def apply_agent_local_overrides(config: dict[str, Any], workspace_root: str | Pa
         init_args = chat.setdefault("init_args", {})
         if isinstance(init_args, dict):
             _fill(init_args, "api_key", llm_api_key(root))
-            _fill(init_args, "base_url", llm_base_url(root))
-            _fill(init_args, "model", llm_model(root))
-            _fill(init_args, "model_provider", llm_model_provider(root))
+            # Provider-specific YAML (e.g. minimax) owns base_url/model via presets.
+            # Only share the API key so resolve_chat_model_config can still fill defaults.
+            provider = str(init_args.get("model_provider") or "").strip().lower()
+            if provider not in PROVIDER_PRESETS:
+                _fill(init_args, "base_url", llm_base_url(root))
+                _fill(init_args, "model", llm_model(root))
+                _fill(init_args, "model_provider", llm_model_provider(root))
 
     image = merged.get("image_generator")
     if isinstance(image, dict):
@@ -71,8 +76,13 @@ def apply_agent_local_overrides(config: dict[str, Any], workspace_root: str | Pa
     return merged
 
 
+def _is_template_placeholder(value: str) -> bool:
+    stripped = value.strip()
+    return len(stripped) >= 2 and stripped.startswith("<") and stripped.endswith(">")
+
+
 def _fill(target: dict[str, Any], key: str, value: str) -> None:
-    if not value:
+    if not value or _is_template_placeholder(value):
         return
     current = target.get(key)
     if current is None or (isinstance(current, str) and not current.strip()):

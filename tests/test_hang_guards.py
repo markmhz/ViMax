@@ -6,7 +6,9 @@ missing exception) rather than hanging the suite; the fixed code must give up
 before the fake ever succeeds.
 """
 
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import requests
@@ -32,9 +34,15 @@ class TestDownloadRetries(unittest.TestCase):
     def setUp(self):
         _no_sleep(download_image)
         _no_sleep(download_video)
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmpdir.name)
+
+    def tearDown(self):
+        self._tmpdir.cleanup()
 
     def test_download_image_gives_up_on_persistent_network_error(self):
         calls = {"n": 0}
+        save_path = str(self.tmp / "a.png")
 
         def flaky_get(url, **kwargs):
             calls["n"] += 1
@@ -44,11 +52,12 @@ class TestDownloadRetries(unittest.TestCase):
 
         with patch("utils.image.requests.get", side_effect=flaky_get):
             with self.assertRaises(requests.ConnectionError):
-                download_image("http://example.com/a.png", "/tmp/a.png")
+                download_image("http://example.com/a.png", save_path)
         self.assertLessEqual(calls["n"], 5, "retry must be bounded, not retry-until-success")
 
     def test_download_image_does_not_retry_client_errors(self):
         calls = {"n": 0}
+        save_path = str(self.tmp / "expired.png")
         gone = MagicMock()
         gone.raise_for_status.side_effect = requests.HTTPError(
             "404", response=MagicMock(status_code=404)
@@ -62,22 +71,24 @@ class TestDownloadRetries(unittest.TestCase):
 
         with patch("utils.image.requests.get", side_effect=expired_then_ok):
             with self.assertRaises(requests.HTTPError):
-                download_image("http://example.com/expired.png", "/tmp/a.png")
+                download_image("http://example.com/expired.png", save_path)
         self.assertEqual(calls["n"], 1, "4xx responses must fail fast, not be retried")
 
     def test_download_image_sets_a_timeout(self):
         captured = {}
+        save_path = str(self.tmp / "a.png")
 
         def record_get(url, **kwargs):
             captured.update(kwargs)
             return MagicMock()
 
         with patch("utils.image.requests.get", side_effect=record_get):
-            download_image("http://example.com/a.png", "/tmp/a.png")
+            download_image("http://example.com/a.png", save_path)
         self.assertIsNotNone(captured.get("timeout"), "requests.get must not wait forever")
 
     def test_download_video_gives_up_on_persistent_network_error(self):
         calls = {"n": 0}
+        save_path = str(self.tmp / "a.mp4")
 
         def flaky_get(url, **kwargs):
             calls["n"] += 1
@@ -87,7 +98,7 @@ class TestDownloadRetries(unittest.TestCase):
 
         with patch("utils.video.requests.get", side_effect=flaky_get):
             with self.assertRaises(requests.ConnectionError):
-                download_video("http://example.com/a.mp4", "/tmp/a.mp4")
+                download_video("http://example.com/a.mp4", save_path)
         self.assertLessEqual(calls["n"], 5, "retry must be bounded, not retry-until-success")
 
 
