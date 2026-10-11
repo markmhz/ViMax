@@ -1,3 +1,4 @@
+import {messages as ui} from './i18n';
 import type {AgentEvent, ChatState, Message} from './types';
 
 export function createChatState(messages: Message[] = []): ChatState {
@@ -20,6 +21,7 @@ export function composeAgentPrompt(text: string, workspaceUploads: string[] = []
 }
 
 export function applyAgentEvent(state: ChatState, event: AgentEvent): ChatState {
+  const copy = ui().events;
   const turnId = event.turn_id || state.turnId || `turn-${Date.now()}`;
   switch (event.type) {
     case 'turn':
@@ -41,7 +43,7 @@ export function applyAgentEvent(state: ChatState, event: AgentEvent): ChatState 
         tool: name,
         status: 'running',
         stage: 'starting',
-        text: 'Starting',
+        text: copy.starting,
       });
     }
     case 'tool_progress': {
@@ -51,7 +53,7 @@ export function applyAgentEvent(state: ChatState, event: AgentEvent): ChatState 
         tool: name,
         status: 'running',
         stage: event.progress?.stage || 'running',
-        text: event.progress?.message || humanize(event.progress?.stage || 'Running'),
+        text: event.progress?.message || humanize(event.progress?.stage || copy.running),
       });
     }
     case 'tool_result': {
@@ -62,7 +64,7 @@ export function applyAgentEvent(state: ChatState, event: AgentEvent): ChatState 
         tool: name,
         status: ok ? 'done' : 'error',
         stage: ok ? 'completed' : 'failed',
-        text: ok ? 'Completed' : cleanError(event.tool_result?.content || 'Tool failed'),
+        text: ok ? copy.completed : cleanError(event.tool_result?.content || copy.toolFailed),
       });
     }
     case 'terminal':
@@ -74,21 +76,21 @@ export function applyAgentEvent(state: ChatState, event: AgentEvent): ChatState 
           role: 'activity',
           status: 'error',
           tool: 'runtime',
-          text: cleanError(event.line || 'Runtime error'),
+          text: cleanError(event.line || copy.runtimeError),
         }],
       };
     case 'error':
       return {
         ...state,
         busy: false,
-        messages: [...state.messages, {id: `error-${turnId}-${Date.now()}`, role: 'error', text: event.message || 'Unknown agent error'}],
+        messages: [...state.messages, {id: `error-${turnId}-${Date.now()}`, role: 'error', text: event.message || copy.unknownError}],
       };
     case 'done': {
       const hasAssistant = state.messages.some((message) => message.id === `assistant-${turnId}`);
-      const messages = !hasAssistant && event.assistant
+      const nextMessages = !hasAssistant && event.assistant
         ? [...state.messages, {id: `assistant-${turnId}`, role: 'assistant' as const, text: event.assistant}]
         : state.messages;
-      return {...state, messages, busy: false};
+      return {...state, messages: nextMessages, busy: false};
     }
     case 'bridge_status':
       if (event.status !== 'error' && event.status !== 'stopped') return state;
@@ -96,7 +98,7 @@ export function applyAgentEvent(state: ChatState, event: AgentEvent): ChatState 
         ...state,
         busy: false,
         messages: state.messages.map((message) => message.role === 'activity' && message.status === 'running'
-          ? {...message, status: 'error', stage: 'interrupted', text: event.message || 'Generation stopped'}
+          ? {...message, status: 'error', stage: 'interrupted', text: event.message || copy.generationStopped}
           : message),
       };
     default:
@@ -111,28 +113,28 @@ function appendAssistantDelta(state: ChatState, turnId: string, delta: string): 
   if (index < 0) {
     return {...state, messages: [...state.messages, {id, role: 'assistant', text: delta}]};
   }
-  const messages = [...state.messages];
-  messages[index] = {...messages[index], text: `${messages[index].text}${delta}`};
-  return {...state, messages};
+  const nextMessages = [...state.messages];
+  nextMessages[index] = {...nextMessages[index], text: `${nextMessages[index].text}${delta}`};
+  return {...state, messages: nextMessages};
 }
 
 function upsertActivity(state: ChatState, message: Message): ChatState {
   const index = state.messages.findIndex((item) => item.id === message.id);
   if (index < 0) return {...state, messages: [...state.messages, message]};
-  const messages = [...state.messages];
-  messages[index] = {...messages[index], ...message};
-  return {...state, messages};
+  const nextMessages = [...state.messages];
+  nextMessages[index] = {...nextMessages[index], ...message};
+  return {...state, messages: nextMessages};
 }
 
 function upsertLatestToolActivity(state: ChatState, tool: string, update: Omit<Message, 'id'>): ChatState {
-  const messages = [...state.messages];
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index].role === 'activity' && messages[index].tool === tool && messages[index].status === 'running') {
-      messages[index] = {...messages[index], ...update};
-      return {...state, messages};
+  const nextMessages = [...state.messages];
+  for (let index = nextMessages.length - 1; index >= 0; index -= 1) {
+    if (nextMessages[index].role === 'activity' && nextMessages[index].tool === tool && nextMessages[index].status === 'running') {
+      nextMessages[index] = {...nextMessages[index], ...update};
+      return {...state, messages: nextMessages};
     }
   }
-  return {...state, messages: [...messages, {id: `activity-${tool}-${Date.now()}`, ...update}]};
+  return {...state, messages: [...nextMessages, {id: `activity-${tool}-${Date.now()}`, ...update}]};
 }
 
 function activityId(turnId: string, toolId: string | undefined, name: string) {

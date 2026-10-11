@@ -70,6 +70,7 @@ def build_vimax_adapter_specs(workspace_root: str | Path, session_index: Any) ->
             description=(
                 "Create ViMax structured text artifacts from a novel or novel excerpt. "
                 "This writes novel2video/novel, events, relevant_chunks, scenes, and global_information text artifacts. "
+                "Requires embedding and reranker credentials in addition to the LLM. "
                 "Use this when the user provides long prose, a novel excerpt, or asks for novel-to-video planning. Pass the active session_id when the user is working in a selected empty project. "
                 "It does not generate character portraits, scene videos, or final video."
             ),
@@ -85,6 +86,7 @@ def build_vimax_adapter_specs(workspace_root: str | Path, session_index: Any) ->
             name="vimax_render_video",
             description=(
                 "Render keyframes, video clips, and final video for the active ViMax session. "
+                "Idea/script modes write a workflow final_video.mp4; novel mode renders each scene then assembles novel2video/final_video.mp4. "
                 "This checks that structured text artifacts exist before rendering and reports missing dependencies instead of pretending render started."
             ),
             handler=adapter.vimax_render_video,
@@ -326,14 +328,14 @@ class ViMaxAdapters:
         ready = _novel_text_ready(checklist)
         self.session_index.update_stage(session_id, "novel_planned" if ready else "novel_planning", "Novel structured text planning complete" if ready else "Novel structured text planning partially complete")
         if runtime:
-            runtime.emit_progress("Novel planning complete", stage="completed", metadata={"session_id": session_id, "ready_for_scene_render": False})
+            runtime.emit_progress("Novel planning complete", stage="completed", metadata={"session_id": session_id, "ready_for_scene_render": ready})
         payload = {
             "session_id": session_id,
             "working_dir": str(working_dir.relative_to(self.workspace_root)),
             "generated": generated,
             "reused": reused,
             "missing": missing,
-            "ready_for_scene_render": False,
+            "ready_for_scene_render": ready,
         }
         return ToolResult("vimax_novel_planning", True, json.dumps(payload, ensure_ascii=False, indent=2), payload)
 
@@ -385,14 +387,19 @@ class ViMaxAdapters:
                 with _suppress_pipeline_output():
                     render_result = await pipeline.render_video_artifacts(style=str(session.get("style", "")), user_requirement=str(session.get("user_requirement", "")), quiet=True, progress=_pipeline_progress(runtime, session_id))
                 scene_videos_dir = Path(render_result["scene_videos_dir"])
-                self.session_index.update_stage(session_id, "novel_scene_rendered", "Novel scene videos rendered")
+                final_video = Path(render_result["final_video_path"])
+                if not final_video.is_absolute():
+                    final_video = (novel_dir / final_video).resolve()
+                if not final_video.exists():
+                    raise RuntimeError(f"Novel final video missing after assembly: {final_video}")
+                self.session_index.update_stage(session_id, "rendered", "Final video rendered")
                 payload = {
                     "session_id": session_id,
                     "render_mode": "novel2video",
                     "render_started": True,
                     "render_completed": True,
                     "scene_render_completed": True,
-                    "final_video_path": None,
+                    "final_video_path": str(final_video.relative_to(self.workspace_root)),
                     "scene_videos_dir": str(scene_videos_dir.relative_to(self.workspace_root)),
                     "scene_video_dirs": [str(Path(path).relative_to(self.workspace_root)) for path in render_result.get("scene_video_dirs", [])],
                     "scene_count": render_result.get("scene_count", 0),

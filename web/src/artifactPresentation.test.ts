@@ -21,15 +21,15 @@ describe('artifact presentation', () => {
   });
 
   it('creates readable artifact and field labels', () => {
-    expect(friendlyArtifactTitle(artifact)).toBe('Scene 1 · Storyboard');
-    expect(friendlyFieldLabel('motion_desc')).toBe('Motion');
+    expect(friendlyArtifactTitle(artifact)).toBe('场景 1 · 分镜');
+    expect(friendlyFieldLabel('motion_desc')).toBe('运动');
     expect(friendlyFieldLabel('custom_camera_note')).toBe('Custom Camera Note');
   });
 
   it('presents indexes and booleans for non-technical readers', () => {
     expect(formatStructuredValue(0, 'cam_idx')).toBe('1');
     expect(formatStructuredValue([0, 2], 'ff_vis_char_idxs')).toBe('1, 3');
-    expect(formatStructuredValue(false, 'is_last')).toBe('No');
+    expect(formatStructuredValue(false, 'is_last')).toBe('否');
   });
 
   it('identifies filesystem metadata that should stay hidden in artifacts', () => {
@@ -103,6 +103,35 @@ describe('artifact presentation', () => {
     expect(activeRenderCheckpoint('frame_start')).toBe('frames');
     expect(activeRenderCheckpoint('video_clip_waiting_for_frames')).toBe('clips');
     expect(activeRenderCheckpoint('concat_start')).toBe('finalVideo');
+  });
+
+  it('treats completed novel planning artifacts as ready to render', () => {
+    const readiness = deriveStoryboardReadiness([
+      makeArtifact('novel2video/novel/novel_compressed.txt'),
+      makeArtifact('novel2video/events/event_0.json'),
+      makeArtifact('novel2video/scenes/event_0/scene_0.json'),
+      makeArtifact('novel2video/global_information/characters/event_level/event_0_characters.json'),
+      makeArtifact('novel2video/global_information/characters/novel_level/novel_characters_after_event_0.json'),
+    ], 0);
+    expect(readiness.readyToRender).toBe(true);
+    expect(readiness.overall).toBe('ready');
+    expect(readiness.storyboards.count).toBe(1);
+    expect(readiness.render.finalVideo.status).toBe('inactive');
+  });
+
+  it('counts only the novel workflow final film, not per-scene finals', () => {
+    const readiness = deriveStoryboardReadiness([
+      makeArtifact('novel2video/novel/novel_compressed.txt'),
+      makeArtifact('novel2video/events/event_0.json'),
+      makeArtifact('novel2video/scenes/event_0/scene_0.json'),
+      makeArtifact('novel2video/global_information/characters/event_level/event_0_characters.json'),
+      makeArtifact('novel2video/global_information/characters/novel_level/novel_characters_after_event_0.json'),
+      makeArtifact('novel2video/videos/event_0/scene_0/final_video.mp4'),
+      makeArtifact('novel2video/final_video.mp4'),
+    ], 0);
+    expect(readiness.render.started).toBe(true);
+    expect(readiness.render.finalVideo.status).toBe('ready');
+    expect(readiness.render.finalVideo.count).toBe(1);
   });
 
   it('pairs shot documents with visual output from the same shot', () => {

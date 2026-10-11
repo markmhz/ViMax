@@ -1,3 +1,4 @@
+import {msg} from './i18n.mjs';
 import {readFile, rename, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {parse, stringify} from 'yaml';
@@ -17,7 +18,7 @@ export async function readAgentConfig(repoRoot) {
 
 export async function saveAgentConfig(repoRoot, input) {
   if (!input || typeof input !== 'object' || !input.sections || typeof input.sections !== 'object') {
-    throw new Error('Configuration sections are required');
+    throw new Error(msg('configSectionsRequired'));
   }
   const {configPath, payload} = await loadConfig(repoRoot);
   for (const [section, fields] of Object.entries(SECTION_FIELDS)) {
@@ -49,7 +50,7 @@ async function loadConfig(repoRoot) {
   }
   const payload = text ? parse(text) : {};
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    throw new Error('configs/agent.local.yaml must be a YAML mapping');
+    throw new Error(msg('configMustBeMapping'));
   }
   return {configPath, payload};
 }
@@ -68,11 +69,11 @@ function publicConfig(payload) {
 }
 
 function validatedValue(value, label, maxLength) {
-  if (typeof value !== 'string') throw new Error(`${label} must be a string`);
+  if (typeof value !== 'string') throw new Error(msg('mustBeString', {label}));
   const normalized = value.trim();
-  if (normalized.length > maxLength) throw new Error(`${label} is too long`);
+  if (normalized.length > maxLength) throw new Error(msg('tooLong', {label}));
   if (label.endsWith('.base_url') && normalized && !/^https?:\/\//i.test(normalized)) {
-    throw new Error(`${label} must use http:// or https://`);
+    throw new Error(msg('mustUseHttp', {label}));
   }
   return normalized;
 }

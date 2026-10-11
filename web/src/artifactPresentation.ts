@@ -1,3 +1,4 @@
+import {messages, t} from './i18n';
 import type {Artifact, JsonValue} from './types';
 
 export type StoryboardPreview = {
@@ -22,36 +23,6 @@ export type StoryboardReadiness = {
 };
 
 export type RenderCheckpoint = 'frames' | 'clips' | 'finalVideo';
-
-const FIELD_LABELS: Record<string, string> = {
-  idx: 'Number',
-  is_last: 'Final shot',
-  cam_idx: 'Camera',
-  visual_desc: 'Visual description',
-  visual_description: 'Visual description',
-  audio_desc: 'Audio',
-  description: 'Description',
-  ff_desc: 'First frame',
-  lf_desc: 'Last frame',
-  motion_desc: 'Motion',
-  variation_type: 'Transition type',
-  variation_reason: 'Transition notes',
-  ff_vis_char_idxs: 'Characters in first frame',
-  lf_vis_char_idxs: 'Characters in last frame',
-  character_idx: 'Character',
-  character_id: 'Character',
-  shot_idx: 'Shot',
-  scene_idx: 'Scene',
-  camera_idx: 'Camera',
-};
-
-const FILE_TITLES: Record<string, string> = {
-  'camera_tree.json': 'Camera plan',
-  'characters.json': 'Characters',
-  'script.json': 'Script',
-  'shot_description.json': 'Shot description',
-  'storyboard.json': 'Storyboard',
-};
 
 export function isJsonArtifact(artifact: Artifact): boolean {
   const name = artifact.name.toLowerCase();
@@ -88,7 +59,8 @@ export function relatedVisualArtifacts(documentArtifact: Artifact, artifacts: Ar
 }
 
 export function friendlyFieldLabel(key: string): string {
-  if (FIELD_LABELS[key]) return FIELD_LABELS[key];
+  const labels = messages().fields as Record<string, string>;
+  if (labels[key]) return labels[key];
   return key
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (character) => character.toUpperCase());
@@ -100,13 +72,15 @@ export function isArtifactPathField(key: string): boolean {
 }
 
 export function friendlyArtifactTitle(artifact: Artifact): string {
-  const baseTitle = FILE_TITLES[artifact.name.toLowerCase()]
+  const titles = messages().fileTitles as Record<string, string>;
+  const copy = messages().artifacts;
+  const baseTitle = titles[artifact.name.toLowerCase()]
     || artifact.name.replace(/\.json$/i, '').replace(/[_-]+/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
   const sceneMatch = artifact.path.match(/(?:^|\/)scene_(\d+)(?:\/|$)/i);
   const shotMatch = artifact.path.match(/(?:^|\/)shots\/(\d+)(?:\/|$)/i);
   const context = [];
-  if (sceneMatch) context.push(`Scene ${Number(sceneMatch[1]) + 1}`);
-  if (shotMatch) context.push(`Shot ${Number(shotMatch[1]) + 1}`);
+  if (sceneMatch) context.push(t(copy.scene, {n: Number(sceneMatch[1]) + 1}));
+  if (shotMatch) context.push(t(copy.shot, {n: Number(shotMatch[1]) + 1}));
   return context.length ? `${context.join(' · ')} · ${baseTitle}` : baseTitle;
 }
 
@@ -117,18 +91,21 @@ export function structuredRecordTitle(value: JsonValue, index: number, artifact:
       if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
     }
     const explicitIndex = value.idx;
-    if (typeof explicitIndex === 'number') return `${recordNoun(artifact)} ${explicitIndex + 1}`;
+    if (typeof explicitIndex === 'number') {
+      return t(messages().records.numbered, {noun: recordNoun(artifact), n: explicitIndex + 1});
+    }
   }
-  return `${recordNoun(artifact)} ${index + 1}`;
+  return t(messages().records.numbered, {noun: recordNoun(artifact), n: index + 1});
 }
 
 export function formatStructuredValue(value: JsonValue, key = ''): string {
-  if (value === null) return 'Not specified';
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  const copy = messages().values;
+  if (value === null) return copy.notSpecified;
+  if (typeof value === 'boolean') return value ? copy.yes : copy.no;
   if (typeof value === 'number') return isIndexKey(key) ? String(value + 1) : String(value);
-  if (typeof value === 'string') return value.trim() || 'Not specified';
+  if (typeof value === 'string') return value.trim() || copy.notSpecified;
   if (Array.isArray(value) && value.every(isJsonPrimitive)) {
-    if (value.length === 0) return 'None';
+    if (value.length === 0) return copy.none;
     return value.map((item) => typeof item === 'number' && isIndexListKey(key) ? item + 1 : formatStructuredValue(item)).join(', ');
   }
   return '';
@@ -161,12 +138,14 @@ export function extractStoryboardPreviews(document: JsonValue, sourcePath: strin
 }
 
 export function deriveStoryboardReadiness(artifacts: Artifact[], storyboardCount: number): StoryboardReadiness {
+  if (isNovelWorkflow(artifacts)) return deriveNovelReadiness(artifacts);
+
   const storyboardFiles = artifacts.filter(isStoryboardArtifact).length;
   const shotDescriptions = artifacts.filter((artifact) => artifact.name.toLowerCase() === 'shot_description.json').length;
   const cameraPlans = artifacts.filter((artifact) => artifact.name.toLowerCase() === 'camera_tree.json').length;
   const frames = artifacts.filter((artifact) => artifact.name.toLowerCase() === 'first_frame.png').length;
   const clips = artifacts.filter((artifact) => artifact.name.toLowerCase() === 'video.mp4').length;
-  const finalVideos = artifacts.filter((artifact) => artifact.name.toLowerCase() === 'final_video.mp4').length;
+  const finalVideos = artifacts.filter(isWorkflowFinalVideo).length;
   const storyboards = checkpointStatus(storyboardCount, Math.max(storyboardFiles, 1));
   const shots = checkpointStatus(shotDescriptions, storyboardCount);
   const cameras = checkpointStatus(cameraPlans, storyboardFiles);
@@ -183,12 +162,68 @@ export function deriveStoryboardReadiness(artifacts: Artifact[], storyboardCount
     shotDescriptions: {status: shots, count: shotDescriptions, expected: storyboardCount},
     cameraPlans: {status: cameras, count: cameraPlans, expected: storyboardFiles},
     render: {
-      started: frames > 0 || clips > 0 || finalVideos > 0,
+      started: frames > 0 || clips > 0 || finalVideos > 0 || artifacts.some((artifact) => artifact.name.toLowerCase() === 'final_video.mp4'),
       frames: {status: renderCheckpointStatus(frames, storyboardCount), count: frames, expected: storyboardCount},
       clips: {status: renderCheckpointStatus(clips, storyboardCount), count: clips, expected: storyboardCount},
       finalVideo: {status: renderCheckpointStatus(finalVideos, 1), count: finalVideos, expected: 1},
     },
   };
+}
+
+function deriveNovelReadiness(artifacts: Artifact[]): StoryboardReadiness {
+  const novelScenes = artifacts.filter((artifact) => /(?:^|\/)novel2video\/scenes\/event_\d+\/scene_\d+\.json$/i.test(normalizeArtifactPath(artifact.path))).length;
+  const novelEvents = artifacts.filter((artifact) => /(?:^|\/)novel2video\/events\/event_\d+\.json$/i.test(normalizeArtifactPath(artifact.path))).length;
+  const compressed = artifacts.some((artifact) => /(?:^|\/)novel2video\/novel\/novel_compressed\.txt$/i.test(normalizeArtifactPath(artifact.path)));
+  const eventChars = artifacts.some((artifact) => /(?:^|\/)novel2video\/global_information\/characters\/event_level\//i.test(normalizeArtifactPath(artifact.path)));
+  const novelChars = artifacts.some((artifact) => /(?:^|\/)novel2video\/global_information\/characters\/novel_level\//i.test(normalizeArtifactPath(artifact.path)));
+  const readyToRender = compressed && novelEvents > 0 && novelScenes > 0 && eventChars && novelChars;
+
+  const storyboardFiles = artifacts.filter(isStoryboardArtifact).length;
+  const shotDescriptions = artifacts.filter((artifact) => artifact.name.toLowerCase() === 'shot_description.json').length;
+  const cameraPlans = artifacts.filter((artifact) => artifact.name.toLowerCase() === 'camera_tree.json').length;
+  const frames = artifacts.filter((artifact) => artifact.name.toLowerCase() === 'first_frame.png').length;
+  const clips = artifacts.filter((artifact) => artifact.name.toLowerCase() === 'video.mp4').length;
+  const finalVideos = artifacts.filter(isWorkflowFinalVideo).length;
+  const sceneFinals = artifacts.filter((artifact) => /(?:^|\/)novel2video\/videos\/event_\d+\/scene_\d+\/final_video\.mp4$/i.test(normalizeArtifactPath(artifact.path))).length;
+  const expectedShots = storyboardFiles > 0 ? storyboardFiles : novelScenes;
+  // Novel planning does not produce storyboard/shot/camera files; those appear during scene render.
+  // Mirror backend deps: novel text artifacts alone are enough to call vimax_render_video.
+  const storyboards = readyToRender
+    ? {status: 'ready' as const, count: Math.max(storyboardFiles, novelScenes)}
+    : {status: checkpointStatus(Math.max(storyboardFiles, novelScenes), Math.max(novelScenes, 1)), count: Math.max(storyboardFiles, novelScenes)};
+  const shots = readyToRender && shotDescriptions === 0
+    ? {status: 'ready' as const, count: novelScenes, expected: novelScenes}
+    : {status: checkpointStatus(shotDescriptions, expectedShots), count: shotDescriptions, expected: expectedShots};
+  const cameras = readyToRender && cameraPlans === 0
+    ? {status: 'ready' as const, count: novelScenes, expected: novelScenes}
+    : {status: checkpointStatus(cameraPlans, expectedShots), count: cameraPlans, expected: expectedShots};
+  const hasPlanningOutput = readyToRender || novelScenes > 0 || novelEvents > 0 || storyboardFiles > 0;
+
+  return {
+    overall: readyToRender ? 'ready' : hasPlanningOutput ? 'partial' : 'missing',
+    readyToRender,
+    storyboards,
+    shotDescriptions: shots,
+    cameraPlans: cameras,
+    render: {
+      started: frames > 0 || clips > 0 || sceneFinals > 0 || finalVideos > 0,
+      frames: {status: renderCheckpointStatus(frames, expectedShots), count: frames, expected: expectedShots},
+      clips: {status: renderCheckpointStatus(clips, expectedShots), count: clips, expected: expectedShots},
+      finalVideo: {status: renderCheckpointStatus(finalVideos, 1), count: finalVideos, expected: 1},
+    },
+  };
+}
+
+function isNovelWorkflow(artifacts: Artifact[]): boolean {
+  return artifacts.some((artifact) => {
+    const path = normalizeArtifactPath(artifact.path);
+    return path === 'novel2video' || path.startsWith('novel2video/') || path.includes('/novel2video/');
+  });
+}
+
+function isWorkflowFinalVideo(artifact: Artifact): boolean {
+  const path = normalizeArtifactPath(artifact.path);
+  return /(?:^|\/)(?:idea2video|script2video|novel2video)\/final_video\.mp4$/i.test(path);
 }
 
 export function activeRenderCheckpoint(stage: string): RenderCheckpoint {
@@ -208,10 +243,11 @@ export function isJsonPrimitive(value: JsonValue): value is string | number | bo
 
 function recordNoun(artifact: Artifact): string {
   const name = artifact.name.toLowerCase();
-  if (name === 'storyboard.json' || name === 'shot_description.json') return 'Shot';
-  if (name === 'characters.json') return 'Character';
-  if (name === 'script.json') return 'Scene';
-  return 'Item';
+  const copy = messages().records;
+  if (name === 'storyboard.json' || name === 'shot_description.json') return copy.shot;
+  if (name === 'characters.json') return copy.character;
+  if (name === 'script.json') return copy.scene;
+  return copy.item;
 }
 
 function isIndexKey(key: string): boolean {

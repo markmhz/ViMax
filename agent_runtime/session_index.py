@@ -286,6 +286,7 @@ class SessionIndex:
             "novel2video/scenes/event_*/scene_*.json": bool(novel_scenes),
             "novel2video/global_information/characters/event_level/*.json": bool(novel_event_chars),
             "novel2video/global_information/characters/novel_level/*.json": bool(novel_level_chars),
+            "novel2video/final_video.mp4": (novel_dir / "final_video.mp4").exists(),
         }
 
     def memory_text(self) -> str:

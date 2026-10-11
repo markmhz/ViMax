@@ -36,6 +36,7 @@ import {applyAgentEvent, appendLocalUser, composeAgentPrompt, createChatState, h
 import {matchingSlashCommands, shouldShowSlashCommands, type SlashCommandMatch} from './slashCommands';
 import {applyTheme, resolveTheme, THEME_STORAGE_KEY, type Theme} from './theme';
 import type {AgentConfig, AgentEvent, Artifact, ChatState, ConfigSection, Message, SessionSummary, WorkspaceUpload} from './types';
+import {messages, t} from './i18n';
 
 const CONTEXT_TARGET = 160_000;
 
@@ -118,6 +119,14 @@ export default function App() {
         void refreshSessions();
         void refreshArtifacts(sessionId);
       }
+    }
+    // Planning/render tools update sessions.json mid-turn; refresh after each tool so
+    // sidebar stage and Artifacts/storyboard panels are not stuck until the turn ends.
+    if (event.type === 'tool_result' || event.type === 'done') {
+      void refreshSessions().then((state) => {
+        const sessionId = state.activeSessionId;
+        if (sessionId) void refreshArtifacts(sessionId);
+      });
     }
     setChat((current) => applyAgentEvent(current, event));
   }, () => undefined), [refreshArtifacts, refreshSessions]);
@@ -253,7 +262,7 @@ export default function App() {
     const sessionId = selectedSessionId;
     if (!files?.length) return;
     if (!sessionId) {
-      setLoadError('Create or select a project before uploading files');
+      setLoadError(messages().workspace.uploadBeforeProject);
       return;
     }
     setUploadingFiles(true);
@@ -341,18 +350,18 @@ export default function App() {
       <main className="workspace-main">
         {workspaceView === 'workspace' ? (
           <div className="workspace-utility-bar">
-            <button className="icon-button mobile-only" onClick={() => setMobileSidebarOpen(true)} aria-label="Open navigation">
+            <button className="icon-button mobile-only" onClick={() => setMobileSidebarOpen(true)} aria-label={messages().nav.openNavigation}>
               <Menu size={19} />
             </button>
             {!sidebarOpen && (
-              <button className="icon-button desktop-only" onClick={() => setSidebarOpen(true)} aria-label="Open navigation">
+              <button className="icon-button desktop-only" onClick={() => setSidebarOpen(true)} aria-label={messages().nav.openNavigation}>
                 <PanelLeftOpen size={18} />
               </button>
             )}
             <span className="workspace-utility-spacer" />
             <div className="workspace-utility-actions">
               <ThemeToggle theme={theme} onToggle={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')} />
-              <button className="icon-button artifact-toggle" onClick={() => setStoryboardPanelOpen((value) => !value)} aria-label="Toggle storyboard preview">
+              <button className="icon-button artifact-toggle" onClick={() => setStoryboardPanelOpen((value) => !value)} aria-label={messages().workspace.toggleStoryboard}>
                 <PanelRight size={18} />
                 {storyboardCount > 0 && <span className="count-badge">{storyboardCount}</span>}
               </button>
@@ -361,16 +370,16 @@ export default function App() {
         ) : (
           <header className="workspace-header">
             <div className="workspace-title-row">
-              <button className="icon-button mobile-only" onClick={() => setMobileSidebarOpen(true)} aria-label="Open navigation">
+              <button className="icon-button mobile-only" onClick={() => setMobileSidebarOpen(true)} aria-label={messages().nav.openNavigation}>
                 <Menu size={19} />
               </button>
               {!sidebarOpen && (
-                <button className="icon-button desktop-only" onClick={() => setSidebarOpen(true)} aria-label="Open navigation">
+                <button className="icon-button desktop-only" onClick={() => setSidebarOpen(true)} aria-label={messages().nav.openNavigation}>
                   <PanelLeftOpen size={18} />
                 </button>
               )}
               <div className="workspace-title-copy">
-                <strong>{workspaceView === 'settings' ? 'Settings' : 'Artifacts'}</strong>
+                <strong>{workspaceView === 'settings' ? messages().settings.title : messages().nav.artifacts}</strong>
                 {workspaceView === 'settings' && <span>configs/agent.local.yaml</span>}
               </div>
             </div>
@@ -399,7 +408,7 @@ export default function App() {
           {loadError && (
             <div className="inline-error" role="alert">
               <span>{loadError}</span>
-              <button onClick={() => setLoadError('')} aria-label="Dismiss error"><X size={15} /></button>
+              <button onClick={() => setLoadError('')} aria-label={messages().workspace.dismissError}><X size={15} /></button>
             </div>
           )}
           {showSlashCommands && <SlashCommandMenu matches={slashMatches} contextPercent={contextPercent} onSelect={(command) => {
@@ -422,8 +431,8 @@ export default function App() {
                   void submit();
                 }
               }}
-              placeholder="Describe what you want to make"
-              aria-label="Message ViMax"
+              placeholder={messages().workspace.composerPlaceholder}
+              aria-label={messages().workspace.messageAria}
               disabled={chat.busy}
               rows={1}
             />
@@ -436,13 +445,13 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setWorkspaceUploads((current) => current.filter((item) => item.path !== file.path))}
-                      aria-label={`Remove ${file.name} from this message`}
+                      aria-label={t(messages().workspace.removeAttachment, {name: file.name})}
                     >
                       <X size={12} />
                     </button>
                   </span>
                 ))}
-                {uploadingFiles && <span className="composer-uploading">Uploading…</span>}
+                {uploadingFiles && <span className="composer-uploading">{messages().workspace.uploading}</span>}
               </div>
             )}
             <div className="composer-controls">
@@ -459,17 +468,17 @@ export default function App() {
                 className="composer-add"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={!selectedSessionId || uploadingFiles || chat.busy}
-                aria-label="Upload files to workspace"
+                aria-label={messages().workspace.uploadFiles}
                 aria-busy={uploadingFiles}
-                title={selectedSessionId ? 'Upload files to workspace' : 'Create or select a project first'}
+                title={selectedSessionId ? messages().workspace.uploadFiles : messages().workspace.createProjectFirst}
               >
                 <Plus size={20} />
               </button>
               <div className="composer-spacer" />
               {chat.busy ? (
-                <button className="send-button stop" onClick={() => void stop()} aria-label="Stop generation"><CircleStop size={18} /></button>
+                <button className="send-button stop" onClick={() => void stop()} aria-label={messages().workspace.stopGeneration}><CircleStop size={18} /></button>
               ) : (
-                <button className="send-button" onClick={() => void submit()} disabled={!draft.trim() || uploadingFiles} aria-label="Send message"><ArrowUp size={19} /></button>
+                <button className="send-button" onClick={() => void submit()} disabled={!draft.trim() || uploadingFiles} aria-label={messages().workspace.sendMessage}><ArrowUp size={19} /></button>
               )}
             </div>
           </div>
@@ -526,23 +535,23 @@ function Sidebar({open, mobileOpen, sessions, selectedSessionId, activeView, onT
 }) {
   return (
     <>
-      {mobileOpen && <button className="sidebar-scrim" onClick={onMobileClose} aria-label="Close navigation" />}
+      {mobileOpen && <button className="sidebar-scrim" onClick={onMobileClose} aria-label={messages().nav.closeNavigation} />}
       <aside className={`sidebar ${open ? 'is-open' : 'is-collapsed'} ${mobileOpen ? 'is-mobile-open' : ''}`}>
         <div className="sidebar-brand">
-          <strong>ViMax</strong>
-          <button className="icon-button sidebar-collapse desktop-only" onClick={onToggle} aria-label="Collapse navigation">
+          <strong>{messages().brand}</strong>
+          <button className="icon-button sidebar-collapse desktop-only" onClick={onToggle} aria-label={messages().nav.collapseNavigation}>
             <PanelLeftClose size={17} />
           </button>
-          <button className="icon-button mobile-only" onClick={onMobileClose} aria-label="Close navigation"><X size={18} /></button>
+          <button className="icon-button mobile-only" onClick={onMobileClose} aria-label={messages().nav.closeNavigation}><X size={18} /></button>
         </div>
-        <nav className="primary-nav" aria-label="Primary navigation">
-          <button onClick={onNew}><FolderPlus size={17} /><span>New project</span></button>
-          <button className={activeView === 'workspace' ? 'is-active' : ''} onClick={onWorkspace}><Folder size={17} /><span>Workspace</span></button>
-          <button className={activeView === 'artifacts' ? 'is-active' : ''} onClick={onArtifacts}><Files size={17} /><span>Artifacts</span></button>
-          <button className={activeView === 'settings' ? 'is-active' : ''} onClick={onSettings}><Settings size={17} /><span>Settings</span></button>
+        <nav className="primary-nav" aria-label={messages().nav.primary}>
+          <button onClick={onNew}><FolderPlus size={17} /><span>{messages().nav.newProject}</span></button>
+          <button className={activeView === 'workspace' ? 'is-active' : ''} onClick={onWorkspace}><Folder size={17} /><span>{messages().nav.workspace}</span></button>
+          <button className={activeView === 'artifacts' ? 'is-active' : ''} onClick={onArtifacts}><Files size={17} /><span>{messages().nav.artifacts}</span></button>
+          <button className={activeView === 'settings' ? 'is-active' : ''} onClick={onSettings}><Settings size={17} /><span>{messages().nav.settings}</span></button>
         </nav>
         <div className="session-section">
-          <div className="section-label"><span>Projects</span><span>{sessions.length}</span></div>
+          <div className="section-label"><span>{messages().nav.projects}</span><span>{sessions.length}</span></div>
           <div className="session-list">
             {sessions.map((session) => (
               <div
@@ -555,17 +564,17 @@ function Sidebar({open, mobileOpen, sessions, selectedSessionId, activeView, onT
                     <small>{relativeTime(session.updatedAt)} · {stageLabel(session.stage)}</small>
                   </span>
                 </button>
-                <button className="session-delete" onClick={() => onDelete(session)} aria-label={`Delete ${sessionTitle(session)}`} title="Delete project">
+                <button className="session-delete" onClick={() => onDelete(session)} aria-label={t(messages().nav.deleteProjectNamed, {name: sessionTitle(session)})} title={messages().nav.deleteProject}>
                   <Trash2 size={14} />
                 </button>
               </div>
             ))}
-            {sessions.length === 0 && <span className="empty-list">No projects yet</span>}
+            {sessions.length === 0 && <span className="empty-list">{messages().nav.noProjects}</span>}
           </div>
         </div>
         <div className="sidebar-footer">
           <span className="avatar">V</span>
-          <div><strong>Local workspace</strong><small>Local · ViMax</small></div>
+          <div><strong>{messages().nav.localWorkspace}</strong><small>{messages().nav.localViMax}</small></div>
         </div>
       </aside>
     </>
@@ -576,21 +585,22 @@ function EmptyState({theme}: {theme: Theme}) {
   return (
     <section className="empty-state">
       <img className="empty-state-logo" src={theme === 'dark' ? '/vimax-light.svg' : '/vimax-dark.svg'} alt="ViMax" />
-      <h1>What should we create?</h1>
+      <h1>{messages().workspace.emptyTitle}</h1>
     </section>
   );
 }
 
 function ThemeToggle({theme, onToggle}: {theme: Theme; onToggle: () => void}) {
   const dark = theme === 'dark';
+  const copy = messages().theme;
   return (
     <button
       type="button"
       className="icon-button theme-toggle"
       onClick={onToggle}
-      aria-label={dark ? 'Use light mode' : 'Use dark mode'}
+      aria-label={dark ? copy.useLightMode : copy.useDarkMode}
       aria-pressed={dark}
-      title={dark ? 'Light mode' : 'Dark mode'}
+      title={dark ? copy.lightMode : copy.darkMode}
     >
       {dark ? <Sun size={18} /> : <Moon size={18} />}
     </button>
@@ -618,7 +628,7 @@ function ActivityRow({message}: {message: Message}) {
     <div className={`activity-row status-${message.status || 'done'}`}>
       <span className={`activity-indicator tool-${toolKind}`}><ActivityToolIcon tool={message.tool} /></span>
       <div>
-        <strong>{humanize(message.tool || 'Workflow')}</strong>
+        <strong>{humanize(message.tool || messages().workspace.workflow)}</strong>
         <span>{detail}</span>
       </div>
     </div>
@@ -654,36 +664,40 @@ function activityToolKind(tool?: string) {
   return 'file';
 }
 
-function ThinkingRow({messages}: {messages: Message[]}) {
-  const running = [...messages].reverse().find((message) => message.role === 'activity' && message.status === 'running');
+function ThinkingRow({messages: chatMessages}: {messages: Message[]}) {
+  const running = [...chatMessages].reverse().find((message) => message.role === 'activity' && message.status === 'running');
+  const copy = messages().workspace;
   return (
     <div className="thinking-row">
       <span className="thinking-mark"><i /><i /><i /></span>
-      <span>{running ? `${humanize(running.tool || 'ViMax')} · ${running.text}` : 'ViMax is thinking'}</span>
+      <span>{running ? t(copy.thinkingWithTool, {tool: humanize(running.tool || messages().brand), text: running.text}) : copy.thinking}</span>
     </div>
   );
 }
 
 function SlashCommandMenu({matches, contextPercent, onSelect}: {matches: SlashCommandMatch[]; contextPercent: number; onSelect: (command: string) => void}) {
   return (
-    <div className="slash-command-menu" role="listbox" aria-label="Slash commands">
+    <div className="slash-command-menu" role="listbox" aria-label={messages().slash.menuAria}>
       {matches.length > 0 ? matches.map((command) => (
         <button key={command.name} role="option" aria-selected="false" onMouseDown={(event) => event.preventDefault()} onClick={() => onSelect(command.name)}>
           <code><span><b>{command.matchedPrefix}</b><span>{command.unmatchedSuffix}</span></span>{command.name === '/compact' && <em>{contextPercent}%</em>}</code>
           <small>{command.description}</small>
         </button>
-      )) : <span className="slash-command-empty">No matching commands</span>}
+      )) : <span className="slash-command-empty">{messages().slash.noMatch}</span>}
     </div>
   );
 }
 
-const CONFIG_SECTIONS: Array<{key: keyof AgentConfig['sections']; title: string; description: string}> = [
-  {key: 'llm', title: 'Agent LLM', description: 'Planning, tool selection, and conversation'},
-  {key: 'image', title: 'Image generation', description: 'Characters, keyframes, and shot frames'},
-  {key: 'video', title: 'Video generation', description: 'Shot clips and final video'},
-  {key: 'embedding', title: 'Embedding', description: 'Optional novel retrieval'},
-  {key: 'reranker', title: 'Reranker', description: 'Optional novel retrieval ranking'},
-];
+function configSections(): Array<{key: keyof AgentConfig['sections']; title: string; description: string}> {
+  const sections = messages().settings.sections;
+  return [
+    {key: 'llm', title: sections.llm.title, description: sections.llm.description},
+    {key: 'image', title: sections.image.title, description: sections.image.description},
+    {key: 'video', title: sections.video.title, description: sections.video.description},
+    {key: 'embedding', title: sections.embedding.title, description: sections.embedding.description},
+    {key: 'reranker', title: sections.reranker.title, description: sections.reranker.description},
+  ];
+}
 
 function SettingsView() {
   const [config, setConfig] = useState<AgentConfig>();
@@ -716,7 +730,7 @@ function SettingsView() {
     setStatus('');
     try {
       setConfig(await saveAgentConfig(config));
-      setStatus('Saved');
+      setStatus(messages().settings.saved);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
@@ -724,21 +738,25 @@ function SettingsView() {
     }
   }
 
-  if (loading) return <div className="settings-loading">Loading configuration…</div>;
-  if (!config) return <div className="settings-loading is-error">{status || 'Configuration unavailable'}</div>;
+  if (loading) return <div className="settings-loading">{messages().settings.loading}</div>;
+  if (!config) return <div className="settings-loading is-error">{status || messages().settings.unavailable}</div>;
   return (
     <section className="settings-view">
       <header>
-        <div><span>Local configuration</span><h1>Settings</h1></div>
+        <div>
+          <span>{messages().settings.localConfiguration}</span>
+          <h1>{messages().settings.title}</h1>
+          <p className="settings-note">{messages().settings.novelProvidersNote}</p>
+        </div>
         <div className="settings-save-group">
-          {status && <span className={status === 'Saved' ? 'is-saved' : 'is-error'}>{status}</span>}
+          {status && <span className={status === messages().settings.saved ? 'is-saved' : 'is-error'}>{status}</span>}
           <button className="settings-save" onClick={() => void save()} disabled={saving}>
-            <Save size={15} />{saving ? 'Saving…' : 'Save'}
+            <Save size={15} />{saving ? messages().settings.saving : messages().settings.save}
           </button>
         </div>
       </header>
       <div className="settings-sections">
-        {CONFIG_SECTIONS.map((definition) => (
+        {configSections().map((definition) => (
           <ConfigSectionEditor
             key={definition.key}
             definition={definition}
@@ -761,13 +779,13 @@ function ConfigSectionEditor({definition, value, onChange}: {
       <header><h2>{definition.title}</h2><p>{definition.description}</p></header>
       <div className="config-fields">
         {value.model_provider !== undefined && (
-          <label><span>Model provider</span><input value={value.model_provider} onChange={(event) => onChange('model_provider', event.target.value)} /></label>
+          <label><span>{messages().settings.modelProvider}</span><input value={value.model_provider} onChange={(event) => onChange('model_provider', event.target.value)} /></label>
         )}
-        <label><span>Model</span><input value={value.model} onChange={(event) => onChange('model', event.target.value)} /></label>
-        <label className="config-field-wide"><span>Base URL</span><input value={value.base_url} onChange={(event) => onChange('base_url', event.target.value)} inputMode="url" /></label>
+        <label><span>{messages().settings.model}</span><input value={value.model} onChange={(event) => onChange('model', event.target.value)} /></label>
+        <label className="config-field-wide"><span>{messages().settings.baseUrl}</span><input value={value.base_url} onChange={(event) => onChange('base_url', event.target.value)} inputMode="url" /></label>
         <label className="config-field-wide">
-          <span>API key <i className={value.has_api_key ? 'is-configured' : ''}>{value.has_api_key ? 'Configured' : 'Not configured'}</i></span>
-          <input type="password" value={value.api_key} onChange={(event) => onChange('api_key', event.target.value)} placeholder={value.has_api_key ? 'Leave blank to keep current key' : 'Enter API key'} autoComplete="off" />
+          <span>{messages().settings.apiKey} <i className={value.has_api_key ? 'is-configured' : ''}>{value.has_api_key ? messages().settings.configured : messages().settings.notConfigured}</i></span>
+          <input type="password" value={value.api_key} onChange={(event) => onChange('api_key', event.target.value)} placeholder={value.has_api_key ? messages().settings.keepKeyPlaceholder : messages().settings.enterKeyPlaceholder} autoComplete="off" />
         </label>
       </div>
     </section>
@@ -795,12 +813,12 @@ function DeleteProjectDialog({session, deleting, onCancel, onConfirm}: {
       <section className="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-project-title">
         <span className="dialog-icon"><Trash2 size={18} /></span>
         <div className="dialog-copy">
-          <h2 id="delete-project-title">Delete project?</h2>
-          <p><strong>{sessionTitle(session)}</strong> and its generated files will be permanently removed.</p>
+          <h2 id="delete-project-title">{messages().dialog.deleteTitle}</h2>
+          <p>{t(messages().dialog.deleteBody, {name: sessionTitle(session)})}</p>
         </div>
         <div className="dialog-actions">
-          <button onClick={onCancel} disabled={deleting} autoFocus>Cancel</button>
-          <button className="danger" onClick={onConfirm} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete'}</button>
+          <button onClick={onCancel} disabled={deleting} autoFocus>{messages().dialog.cancel}</button>
+          <button className="danger" onClick={onConfirm} disabled={deleting}>{deleting ? messages().dialog.deleting : messages().dialog.delete}</button>
         </div>
       </section>
     </div>
@@ -834,15 +852,15 @@ function NewProjectDialog({open, name, error, creating, onNameChange, onCancel, 
       }}>
         <span className="dialog-icon is-create"><FolderPlus size={18} /></span>
         <div className="dialog-copy">
-          <h2 id="new-project-title">Create a new project</h2>
-          <p>Name the workspace before creating it.</p>
+          <h2 id="new-project-title">{messages().dialog.createTitle}</h2>
+          <p>{messages().dialog.createBody}</p>
         </div>
         <label className="project-name-field">
-          <span>Project name</span>
+          <span>{messages().dialog.projectName}</span>
           <input
             value={name}
             onChange={(event) => onNameChange(event.target.value)}
-            placeholder="Untitled video"
+            placeholder={messages().dialog.projectNamePlaceholder}
             maxLength={64}
             autoFocus
             disabled={creating}
@@ -850,8 +868,8 @@ function NewProjectDialog({open, name, error, creating, onNameChange, onCancel, 
           {error && <small role="alert">{error}</small>}
         </label>
         <div className="dialog-actions">
-          <button type="button" onClick={onCancel} disabled={creating}>Cancel</button>
-          <button type="submit" className="primary" disabled={creating || !name.trim()}>{creating ? 'Creating…' : 'Create'}</button>
+          <button type="button" onClick={onCancel} disabled={creating}>{messages().dialog.cancel}</button>
+          <button type="submit" className="primary" disabled={creating || !name.trim()}>{creating ? messages().dialog.creating : messages().dialog.create}</button>
         </div>
       </form>
     </div>
@@ -859,33 +877,24 @@ function NewProjectDialog({open, name, error, creating, onNameChange, onCancel, 
 }
 
 function sessionTitle(session?: SessionSummary) {
-  if (!session) return 'New video';
+  if (!session) return messages().session.newVideo;
   if (session.projectName) return session.projectName;
   const source = session.idea || session.summary;
   if (source) return source.length > 38 ? `${source.slice(0, 38).trim()}…` : source;
-  return session.sessionId.replace(/^\d{8}-\d{6}-?/, '') || 'Untitled video';
+  return session.sessionId.replace(/^\d{8}-\d{6}-?/, '') || messages().session.untitledVideo;
 }
 
 function stageLabel(stage: string) {
-  const labels: Record<string, string> = {
-    created: 'Created',
-    narrative_planning: 'Planning',
-    narrative_planned: 'Plan ready',
-    novel_planning: 'Planning novel',
-    novel_planned: 'Novel ready',
-    rendering: 'Rendering',
-    rendered: 'Rendered',
-    error: 'Needs attention',
-  };
-  return labels[stage] || humanize(stage || 'Created');
+  const labels = messages().stages as Record<string, string>;
+  return labels[stage] || humanize(stage || messages().stages.created);
 }
 
 function relativeTime(value: string) {
   const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) return 'Recently';
+  if (!Number.isFinite(timestamp)) return messages().time.recently;
   const delta = Math.max(0, Date.now() - timestamp);
   const minutes = Math.floor(delta / 60_000);
-  if (minutes < 1) return 'Now';
+  if (minutes < 1) return messages().time.now;
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;

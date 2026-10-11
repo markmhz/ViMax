@@ -14,6 +14,7 @@ import {
   resolveArtifactPath,
   storeWorkspaceUpload,
 } from './server-lib.mjs';
+import {msg} from './i18n.mjs';
 
 const webRoot = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(webRoot, '..');
@@ -51,7 +52,7 @@ const server = createServer(async (request, response) => {
       const sessionId = url.searchParams.get('session') || '';
       const current = await readSessionState(repoRoot);
       if (!current.sessions.some((session) => session.sessionId === sessionId)) {
-        return sendJson(response, 404, {error: 'Project not found'});
+        return sendJson(response, 404, {error: msg('projectNotFound')});
       }
       if (sessionId === activeSessionId) stopAgent('delete');
       const state = await deleteSession(repoRoot, sessionId);
@@ -73,11 +74,11 @@ const server = createServer(async (request, response) => {
       const fileName = url.searchParams.get('name') || '';
       const current = await readSessionState(repoRoot);
       if (!current.sessions.some((session) => session.sessionId === sessionId)) {
-        return sendJson(response, 404, {error: 'Project not found'});
+        return sendJson(response, 404, {error: msg('projectNotFound')});
       }
       const declaredSize = Number(request.headers['content-length'] || 0);
       if (declaredSize > uploadMaxBytes) {
-        return sendJson(response, 413, {error: `File exceeds the ${formatByteLimit(uploadMaxBytes)} upload limit`});
+        return sendJson(response, 413, {error: msg('uploadLimit', {limit: formatByteLimit(uploadMaxBytes)})});
       }
       const data = await readBinaryBody(request, uploadMaxBytes);
       const file = await storeWorkspaceUpload(repoRoot, sessionId, fileName, data);
@@ -88,7 +89,7 @@ const server = createServer(async (request, response) => {
       const sessionId = typeof body.sessionId === 'string' ? body.sessionId : '';
       const projectName = typeof body.projectName === 'string' ? body.projectName.trim() : '';
       if (projectName.length > 64) {
-        return sendJson(response, 400, {error: 'Project name must be 64 characters or fewer'});
+        return sendJson(response, 400, {error: msg('projectNameTooLong')});
       }
       await startAgent({newSession: body.newSession === true, sessionId, projectName});
       return sendJson(response, 200, {ok: true});
@@ -96,8 +97,8 @@ const server = createServer(async (request, response) => {
     if (url.pathname === '/api/messages' && request.method === 'POST') {
       const body = await readJsonBody(request);
       const text = String(body.text || '').trim();
-      if (!text) return sendJson(response, 400, {error: 'Message text is required'});
-      if (!agentProcess?.stdin.writable) return sendJson(response, 409, {error: 'Agent is not running'});
+      if (!text) return sendJson(response, 400, {error: msg('messageRequired')});
+      if (!agentProcess?.stdin.writable) return sendJson(response, 409, {error: msg('agentNotRunning')});
       agentProcess.stdin.write(`${text}\n`);
       return sendJson(response, 202, {ok: true});
     }
@@ -114,7 +115,7 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (vite) {
-      vite.middlewares(request, response, () => sendJson(response, 404, {error: 'Not found'}));
+      vite.middlewares(request, response, () => sendJson(response, 404, {error: msg('notFound')}));
       return;
     }
     return serveProductionApp(response, url.pathname);
@@ -140,7 +141,7 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 async function startAgent({newSession, sessionId, projectName = ''}) {
-  if (newSession && sessionId) throw new Error('Choose either a new or existing session');
+  if (newSession && sessionId) throw new Error(msg('chooseSession'));
   stopAgent('switch');
   const {command, args} = agentCommand();
   const sessionArgs = newSession
@@ -156,7 +157,7 @@ async function startAgent({newSession, sessionId, projectName = ''}) {
   });
   agentProcess = child;
   let childStdoutBuffer = '';
-  broadcast({type: 'bridge_status', status: 'starting', message: newSession ? 'Creating workspace' : 'Opening workspace'});
+  broadcast({type: 'bridge_status', status: 'starting', message: newSession ? msg('creatingWorkspace') : msg('openingWorkspace')});
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', (chunk) => {
     if (agentProcess !== child) return;
@@ -174,7 +175,7 @@ async function startAgent({newSession, sessionId, projectName = ''}) {
   });
   child.on('error', (error) => {
     if (agentProcess !== child) return;
-    broadcast({type: 'error', message: `Agent process error: ${error.message}`});
+    broadcast({type: 'error', message: msg('agentProcessError', {detail: error.message})});
   });
   child.on('exit', (code, signal) => {
     if (agentProcess !== child) return;
@@ -182,7 +183,7 @@ async function startAgent({newSession, sessionId, projectName = ''}) {
     broadcast({
       type: 'bridge_status',
       status: code === 0 || signal === 'SIGTERM' ? 'stopped' : 'error',
-      message: signal ? `Agent stopped by ${signal}` : `Agent exited with code ${code ?? 0}`,
+      message: signal ? msg('agentStoppedBy', {signal}) : msg('agentExited', {code: code ?? 0}),
     });
   });
   setTimeout(async () => {
@@ -190,7 +191,7 @@ async function startAgent({newSession, sessionId, projectName = ''}) {
     const state = await readSessionState(repoRoot);
     activeSessionId = state.activeSessionId || sessionId || activeSessionId;
     broadcast({type: 'sessions_changed', ...state, activeSessionId});
-    broadcast({type: 'bridge_status', status: 'ready', message: 'Agent ready'});
+    broadcast({type: 'bridge_status', status: 'ready', message: msg('agentReady')});
   }, 350);
 }
 
@@ -215,7 +216,7 @@ function openEventStream(request, response) {
     Connection: 'keep-alive',
     'X-Accel-Buffering': 'no',
   });
-  response.write(`data: ${JSON.stringify({type: 'bridge_status', status: agentProcess ? 'ready' : 'idle', message: agentProcess ? 'Agent connected' : 'Agent idle'})}\n\n`);
+  response.write(`data: ${JSON.stringify({type: 'bridge_status', status: agentProcess ? 'ready' : 'idle', message: agentProcess ? msg('agentConnected') : msg('agentIdle')})}\n\n`);
   subscribers.add(response);
   const heartbeat = setInterval(() => response.write(': keepalive\n\n'), 15_000);
   request.on('close', () => {
@@ -235,10 +236,10 @@ function stopAgent(reason) {
   agentProcess = null;
   child.kill('SIGTERM');
   const message = reason === 'switch'
-    ? 'Switching workspace'
+    ? msg('switchingWorkspace')
     : reason === 'config'
-      ? 'Configuration updated'
-      : 'Generation stopped';
+      ? msg('configurationUpdated')
+      : msg('generationStopped');
   broadcast({type: 'bridge_status', status: 'stopped', message});
 }
 
@@ -248,10 +249,24 @@ function agentCommand() {
   }
   const configuredPython = process.env.VIMAX_PYTHON_CMD;
   if (configuredPython) return {command: configuredPython, args: []};
-  const bundledUv = process.env.VIMAX_UV_CMD || path.join(process.env.HOME || '', '.local', 'bin', 'uv');
-  if (bundledUv && existsSync(bundledUv)) return {command: bundledUv, args: ['run', 'python']};
-  const venvPython = path.join(repoRoot, '.venv', 'bin', 'python3');
-  if (existsSync(venvPython)) return {command: venvPython, args: []};
+  const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+  const bundledUvCandidates = [
+    process.env.VIMAX_UV_CMD,
+    homeDir ? path.join(homeDir, '.local', 'bin', 'uv') : '',
+    homeDir ? path.join(homeDir, '.cargo', 'bin', 'uv.exe') : '',
+    homeDir ? path.join(homeDir, '.local', 'bin', 'uv.exe') : '',
+  ].filter(Boolean);
+  for (const bundledUv of bundledUvCandidates) {
+    if (existsSync(bundledUv)) return {command: bundledUv, args: ['run', 'python']};
+  }
+  const venvPythonCandidates = [
+    path.join(repoRoot, '.venv', 'Scripts', 'python.exe'),
+    path.join(repoRoot, '.venv', 'bin', 'python3'),
+    path.join(repoRoot, '.venv', 'bin', 'python'),
+  ];
+  for (const venvPython of venvPythonCandidates) {
+    if (existsSync(venvPython)) return {command: venvPython, args: []};
+  }
   return {command: 'uv', args: ['run', 'python']};
 }
 
@@ -264,7 +279,7 @@ async function readJsonBody(request) {
   for await (const chunk of request) chunks.push(chunk);
   if (!chunks.length) return {};
   const text = Buffer.concat(chunks).toString('utf8');
-  if (text.length > 1_000_000) throw new Error('Request body is too large');
+  if (text.length > 1_000_000) throw new Error(msg('bodyTooLarge'));
   return JSON.parse(text);
 }
 
@@ -295,7 +310,7 @@ function sendJson(response, status, payload) {
 
 async function streamArtifact(response, sessionId, relativePath) {
   const filePath = resolveArtifactPath(repoRoot, sessionId, relativePath);
-  if (!existsSync(filePath)) return sendJson(response, 404, {error: 'Artifact not found'});
+  if (!existsSync(filePath)) return sendJson(response, 404, {error: msg('artifactNotFound')});
   response.writeHead(200, {
     'Content-Type': artifactContentType(filePath),
     'Cache-Control': 'private, max-age=60',

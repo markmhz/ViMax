@@ -1,3 +1,4 @@
+import {messages, t} from './i18n';
 import type {AgentConfig, AgentEvent, Artifact, JsonValue, Message, SessionSummary, WorkspaceUpload} from './types';
 
 export async function getSessions() {
@@ -32,7 +33,7 @@ export async function uploadWorkspaceFile(sessionId: string, file: File) {
     body: file,
   });
   const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || `Upload failed with HTTP ${response.status}`);
+  if (!response.ok) throw new Error(payload.error || t(messages().errors.uploadFailed, {status: response.status}));
   return payload as {file: WorkspaceUpload};
 }
 
@@ -44,7 +45,9 @@ export async function getJsonArtifact(artifact: Artifact): Promise<JsonValue> {
   });
   const payload = await response.json();
   if (!response.ok) {
-    const message = payload && typeof payload === 'object' && 'error' in payload ? String(payload.error) : `Request failed with HTTP ${response.status}`;
+    const message = payload && typeof payload === 'object' && 'error' in payload
+      ? String(payload.error)
+      : t(messages().errors.requestFailed, {status: response.status});
     throw new Error(message);
   }
   return payload as JsonValue;
@@ -70,7 +73,7 @@ export function subscribeToEvents(onEvent: (event: AgentEvent) => void, onConnec
     try {
       onEvent(JSON.parse(message.data) as AgentEvent);
     } catch {
-      onEvent({type: 'error', message: 'Received an invalid event from the local bridge'});
+      onEvent({type: 'error', message: messages().errors.invalidEvent});
     }
   };
   return () => source.close();
@@ -82,6 +85,6 @@ async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
     headers: {'Content-Type': 'application/json', ...(init.headers || {})},
   });
   const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || `Request failed with HTTP ${response.status}`);
+  if (!response.ok) throw new Error(payload.error || t(messages().errors.requestFailed, {status: response.status}));
   return payload as T;
 }
