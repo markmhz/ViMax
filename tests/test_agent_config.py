@@ -102,6 +102,10 @@ class AgentConfigTests(unittest.TestCase):
         self.assertEqual(api_provider_from_base_url("https://generativelanguage.googleapis.com"), "google")
         self.assertEqual(api_provider_from_base_url("https://example.com/v1"), "")
 
+    def test_sensenova_token_plan_maps_to_openrouter_provider(self):
+        self.assertEqual(api_provider_from_base_url("https://token.sensenova.cn/v1"), "openrouter")
+        self.assertEqual(api_provider_from_base_url("https://api.sensenova.ai/v1"), "openrouter")
+
     def test_explicit_video_provider_overrides_base_url_inference(self):
         with tempfile.TemporaryDirectory() as tmp:
             config_dir = Path(tmp) / "configs"
